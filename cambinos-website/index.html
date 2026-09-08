@@ -51,11 +51,11 @@
         <a href="#top-finds">Top Finds</a>
         <a href="#categories">Categories</a>
         <a href="#curator">The Curator</a>
-        <a href="#about">About</a>
+        <a href="#waitlist">Waitlist</a>
       </div>
 
-      <a href="#contact" class="button button-small">
-        Contact
+      <a href="#waitlist" class="button button-small">
+        Join the waitlist
       </a>
 
     </nav>
@@ -87,12 +87,12 @@
 
         <div class="hero-actions">
 
-          <a href="#features" class="button">
-            Explore Cambinos
+          <a href="#waitlist" class="button">
+            Join the beta waitlist
           </a>
 
-          <a href="#about" class="button button-secondary">
-            Our Mission
+          <a href="#features" class="button button-secondary">
+            Explore Cambinos
           </a>
 
         </div>
@@ -204,6 +204,101 @@
 
         </div>
 
+      </div>
+
+    </div>
+
+  </section>
+
+  <section class="section waitlist-section" id="waitlist">
+
+    <div class="container waitlist-shell">
+
+      <div class="waitlist-copy">
+        <p class="eyebrow">Early access</p>
+        <h2>Be one of the first collectors inside.</h2>
+        <p>
+          Cambinos is getting ready for a small private beta. Join the list for
+          product previews, testing openings, and the official launch announcement.
+        </p>
+
+        <div class="waitlist-benefits">
+          <div><span>01</span><strong>Private beta invitations</strong></div>
+          <div><span>02</span><strong>New feature previews</strong></div>
+          <div><span>03</span><strong>Launch-day access</strong></div>
+        </div>
+      </div>
+
+      <div class="waitlist-card">
+        <div class="waitlist-form-wrap" id="waitlistFormWrap">
+          <span class="waitlist-card-kicker">Reserve your place</span>
+          <h3>Join the Cambinos waitlist</h3>
+          <p>Tell us where to reach you and what you love to collect.</p>
+
+          <form class="waitlist-form" id="waitlistForm" novalidate>
+            <label for="waitlistEmail">Email address</label>
+            <input
+              id="waitlistEmail"
+              name="email"
+              type="email"
+              inputmode="email"
+              autocomplete="email"
+              placeholder="you@example.com"
+              required
+            >
+
+            <label for="waitlistInterest">What do you collect? <span>Optional</span></label>
+            <select id="waitlistInterest" name="interest">
+              <option value="">Choose a category</option>
+              <option value="trading-cards">Trading cards</option>
+              <option value="sports-cards">Sports cards</option>
+              <option value="comics">Comics</option>
+              <option value="coins-currency">Coins &amp; currency</option>
+              <option value="die-cast">Die-cast &amp; vehicles</option>
+              <option value="toys-figures">Toys &amp; figures</option>
+              <option value="games-media">Games, music &amp; media</option>
+              <option value="everything">A little of everything</option>
+            </select>
+
+            <div class="waitlist-honeypot" aria-hidden="true">
+              <label for="waitlistCompany">Company</label>
+              <input id="waitlistCompany" name="company" type="text" tabindex="-1" autocomplete="off">
+            </div>
+
+            <label class="waitlist-consent" for="waitlistConsent">
+              <input id="waitlistConsent" name="consent" type="checkbox" required>
+              <span>
+                I agree to receive Cambinos beta and launch updates. I can
+                unsubscribe at any time.
+              </span>
+            </label>
+
+            <button class="button waitlist-submit" id="waitlistSubmit" type="submit">
+              Join the waitlist
+            </button>
+
+            <p class="waitlist-privacy">
+              No spam. Your information stays private. See our
+              <a href="privacy.html">Privacy Policy</a>.
+            </p>
+            <p class="waitlist-message" id="waitlistMessage" role="status" aria-live="polite"></p>
+          </form>
+        </div>
+
+        <div class="waitlist-success" id="waitlistSuccess" tabindex="-1" hidden>
+          <div class="waitlist-success-icon">✓</div>
+          <span class="waitlist-card-kicker">You're on the list</span>
+          <h3>Welcome to the Cambinos community.</h3>
+          <p>
+            We’ll email you when private beta spaces open. Want to help more
+            collectors discover Cambinos? Share your personal link.
+          </p>
+          <div class="waitlist-share-row">
+            <input id="waitlistShareLink" type="text" readonly aria-label="Your waitlist sharing link">
+            <button class="button button-secondary" id="copyWaitlistLink" type="button">Copy link</button>
+          </div>
+          <p class="waitlist-share-message" id="waitlistShareMessage" role="status" aria-live="polite"></p>
+        </div>
       </div>
 
     </div>
@@ -834,6 +929,76 @@
 
   replayHeroScan.addEventListener('click', playHeroScan);
   window.addEventListener('load', playHeroScan);
+
+  const waitlistForm = document.getElementById('waitlistForm');
+  const waitlistSubmit = document.getElementById('waitlistSubmit');
+  const waitlistMessage = document.getElementById('waitlistMessage');
+  const waitlistFormWrap = document.getElementById('waitlistFormWrap');
+  const waitlistSuccess = document.getElementById('waitlistSuccess');
+  const waitlistShareLink = document.getElementById('waitlistShareLink');
+  const copyWaitlistLink = document.getElementById('copyWaitlistLink');
+  const waitlistShareMessage = document.getElementById('waitlistShareMessage');
+  const localWebsite = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+  const waitlistEndpoint = localWebsite
+    ? 'http://localhost:4000/api/waitlist'
+    : 'https://api.cambinoscollections.com/api/waitlist';
+
+  function waitlistReferralCode() {
+    return new URLSearchParams(window.location.search).get('ref') || '';
+  }
+
+  waitlistForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    waitlistMessage.textContent = '';
+    waitlistMessage.classList.remove('is-error');
+
+    if (!waitlistForm.reportValidity()) return;
+
+    const formData = new FormData(waitlistForm);
+    waitlistSubmit.disabled = true;
+    waitlistSubmit.textContent = 'Joining…';
+
+    try {
+      const response = await fetch(waitlistEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: formData.get('email'),
+          interest: formData.get('interest'),
+          company: formData.get('company'),
+          consent: formData.get('consent') === 'on',
+          source: 'public-website',
+          referralCode: waitlistReferralCode(),
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.success) throw new Error(result.error || 'We could not add you right now. Please try again.');
+
+      const shareUrl = new URL(window.location.origin + window.location.pathname);
+      shareUrl.searchParams.set('ref', result.data.referralCode);
+      shareUrl.hash = 'waitlist';
+      waitlistShareLink.value = shareUrl.toString();
+      waitlistFormWrap.hidden = true;
+      waitlistSuccess.hidden = false;
+      waitlistSuccess.focus({ preventScroll: true });
+    } catch (error) {
+      waitlistMessage.textContent = error instanceof Error ? error.message : 'We could not add you right now. Please try again.';
+      waitlistMessage.classList.add('is-error');
+    } finally {
+      waitlistSubmit.disabled = false;
+      waitlistSubmit.textContent = 'Join the waitlist';
+    }
+  });
+
+  copyWaitlistLink.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(waitlistShareLink.value);
+      waitlistShareMessage.textContent = 'Link copied — thank you for sharing Cambinos.';
+    } catch {
+      waitlistShareLink.select();
+      waitlistShareMessage.textContent = 'Your link is selected. Copy it to share.';
+    }
+  });
 </script>
 
 </body>
