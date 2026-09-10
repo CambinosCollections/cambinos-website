@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Official Store | Cambinos Collections</title>
+  <meta name="description" content="Shop cards, sealed products, complete sets, binders, and other collectibles sold directly by Cambinos Collections.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="store-page">
+  <header class="site-header">
+    <div class="container">
+      <nav class="navbar">
+        <a href="index.html" class="brand">
+          <span class="brand-mark">C</span>
+          <span class="brand-name">Cambinos Collections</span>
+        </a>
+        <div class="nav-links">
+          <a href="index.html">Home</a>
+          <a href="shop.html" aria-current="page">Shop</a>
+          <a href="https://app.cambinoscollections.com/marketplace">Marketplace</a>
+        </div>
+        <a href="https://app.cambinoscollections.com/marketplace" class="button button-small">Open Cambinos</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="store-hero">
+      <div class="container store-hero-layout">
+        <div>
+          <p class="eyebrow">Official Cambinos store</p>
+          <h1>Collectibles ready for a new Vault.</h1>
+          <p>Shop cards, sealed products, complete sets, and binders sold directly by Cambinos Collections. Every item comes from active, quantity-controlled inventory.</p>
+        </div>
+        <div class="store-promise">
+          <span class="store-promise-mark">C</span>
+          <div><strong>Sold by Cambinos Collections</strong><p>Official inventory only. Collector listings remain in the Cambinos Marketplace.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="store-catalog" aria-labelledby="storeHeading">
+      <div class="container">
+        <div class="store-toolbar">
+          <div>
+            <p class="eyebrow">Available inventory</p>
+            <h2 id="storeHeading">Shop the collection</h2>
+          </div>
+          <div class="store-search-wrap">
+            <label for="storeSearch">Search inventory</label>
+            <input id="storeSearch" type="search" placeholder="Cards, sets, sealed products…" autocomplete="off">
+          </div>
+        </div>
+
+        <div class="store-status" id="storeStatus" role="status" aria-live="polite">
+          <span class="store-status-dot"></span>
+          <span>Connecting to official Cambinos inventory…</span>
+        </div>
+
+        <div class="store-filters" id="storeFilters" aria-label="Inventory categories"></div>
+        <div class="store-grid" id="storeGrid" aria-live="polite"></div>
+
+        <div class="store-empty" id="storeEmpty" hidden>
+          <span class="store-empty-mark">C</span>
+          <h3>Fresh inventory is being prepared.</h3>
+          <p>Official listings will appear here automatically as soon as they are published from the Cambinos Business Vault.</p>
+          <a class="button" href="https://app.cambinoscollections.com/marketplace">Browse the collector Marketplace</a>
+        </div>
+
+        <div class="store-error" id="storeError" hidden>
+          <h3>The store could not load right now.</h3>
+          <p>Your inventory is safe. Please refresh the page in a moment.</p>
+          <button class="button button-secondary" id="storeRetry" type="button">Try again</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="store-how">
+      <div class="container store-how-grid">
+        <article><span>01</span><h3>Browse openly</h3><p>Anyone can view official inventory without creating an account.</p></article>
+        <article><span>02</span><h3>Review the exact listing</h3><p>See price, quantity, product details, and available evidence before buying.</p></article>
+        <article><span>03</span><h3>Check out securely</h3><p>Buying opens the protected Cambinos listing so inventory and fulfillment stay connected.</p></article>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container footer-content">
+      <div>
+        <a href="index.html" class="brand footer-brand"><span class="brand-mark">C</span><span class="brand-name">Cambinos Collections</span></a>
+        <p>© 2026 Cambinos Collections LLC. All rights reserved.</p>
+      </div>
+      <div class="footer-links">
+        <a href="index.html">Home</a>
+        <a href="shop.html">Shop</a>
+        <a href="privacy.html">Privacy Policy</a>
+        <a href="terms.html">Terms of Service</a>
+        <a href="mailto:support@cambinoscollections.com">Contact</a>
+      </div>
+    </div>
+  </footer>
+  <script src="shop.js" defer></script>
+</body>
+</html>
