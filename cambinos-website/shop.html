@@ -23,7 +23,9 @@
           <a href="shop.html" aria-current="page">Shop</a>
           <a href="https://app.cambinoscollections.com/marketplace">Marketplace</a>
         </div>
-        <a href="https://app.cambinoscollections.com/marketplace" class="button button-small">Open Cambinos</a>
+        <button class="button button-small store-cart-button" id="storeCartButton" type="button" aria-haspopup="dialog">
+          Cart <span id="storeCartCount" aria-label="0 items">0</span>
+        </button>
       </nav>
     </div>
   </header>
@@ -33,12 +35,12 @@
       <div class="container store-hero-layout">
         <div>
           <p class="eyebrow">Official Cambinos store</p>
-          <h1>Collectibles ready for a new Vault.</h1>
-          <p>Shop cards, sealed products, complete sets, and binders sold directly by Cambinos Collections. Every item comes from active, quantity-controlled inventory.</p>
+          <h1>Build a cart. Keep more value in the collection.</h1>
+          <p>Shop cards, sealed products, complete sets, and binders sold directly by Cambinos Collections. Combine low-cost singles into one order and one payment.</p>
         </div>
         <div class="store-promise">
           <span class="store-promise-mark">C</span>
-          <div><strong>Sold by Cambinos Collections</strong><p>Official inventory only. Collector listings remain in the Cambinos Marketplace.</p></div>
+          <div><strong>Sold by Cambinos Collections</strong><p>Official inventory only. $10 merchandise minimum. Shipping is calculated separately at checkout.</p></div>
         </div>
       </div>
     </section>
@@ -82,11 +84,40 @@
     <section class="store-how">
       <div class="container store-how-grid">
         <article><span>01</span><h3>Browse openly</h3><p>Anyone can view official inventory without creating an account.</p></article>
-        <article><span>02</span><h3>Review the exact listing</h3><p>See price, quantity, product details, and available evidence before buying.</p></article>
-        <article><span>03</span><h3>Check out securely</h3><p>Buying opens the protected Cambinos listing so inventory and fulfillment stay connected.</p></article>
+        <article><span>02</span><h3>Combine small cards</h3><p>Low-cost singles are add-ons. Put several cards into one cart to protect the value of the order.</p></article>
+        <article><span>03</span><h3>Check out once</h3><p>One combined payment covers the whole cart. Shipping and applicable tax are added at checkout.</p></article>
       </div>
     </section>
   </main>
+
+  <dialog class="store-cart" id="storeCart" aria-labelledby="storeCartTitle">
+    <div class="store-cart-shell">
+      <div class="store-cart-header">
+        <div>
+          <p class="eyebrow">Official store</p>
+          <h2 id="storeCartTitle">Your cart</h2>
+        </div>
+        <button class="store-cart-close" id="storeCartClose" type="button" aria-label="Close cart">×</button>
+      </div>
+      <div class="store-cart-items" id="storeCartItems"></div>
+      <div class="store-cart-empty" id="storeCartEmpty">
+        <span class="store-empty-mark">C</span>
+        <h3>Your cart is ready for a first find.</h3>
+        <p>Add cards, sets, or sealed products from the shop.</p>
+      </div>
+      <div class="store-cart-summary" id="storeCartSummary" hidden>
+        <div class="store-cart-total"><span>Merchandise subtotal</span><strong id="storeCartSubtotal">$0.00</strong></div>
+        <p class="store-cart-shipping">Shipping and applicable tax are calculated at checkout.</p>
+        <div class="store-minimum" id="storeMinimum">
+          <div class="store-minimum-copy"><span id="storeMinimumText">Add $10.00 to reach checkout</span><strong>$10 minimum</strong></div>
+          <div class="store-minimum-track"><span id="storeMinimumProgress"></span></div>
+        </div>
+        <p class="store-cart-message" id="storeCartMessage" role="status" aria-live="polite"></p>
+        <button class="button store-checkout-button" id="storeCheckoutButton" type="button" disabled>Checkout connection coming next</button>
+        <p class="store-cart-note">Your cart will stay saved on this device while secure payments are being connected.</p>
+      </div>
+    </div>
+  </dialog>
 
   <footer>
     <div class="container footer-content">
