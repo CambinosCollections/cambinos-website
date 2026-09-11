@@ -55,6 +55,11 @@ let inventory = [];
 let activeCatalog = 'all';
 let checkoutLive = false;
 let cart = readCart();
+const checkoutReturn = new URLSearchParams(location.search).get('checkout');
+if (checkoutReturn === 'success') {
+  localStorage.removeItem(CART_KEY);
+  cart = [];
+}
 
 function readCart() {
   try {
@@ -262,10 +267,30 @@ function renderCart() {
   const remaining = Math.max(0, MINIMUM_CENTS - subtotalCents);
   minimumProgress.style.width = `${Math.min(100, (subtotalCents / MINIMUM_CENTS) * 100)}%`;
   minimumText.textContent = remaining > 0 ? `Add ${money(remaining / 100)} to reach checkout` : 'Order minimum reached';
-  checkoutButton.disabled = true;
-  checkoutButton.textContent = subtotalCents < MINIMUM_CENTS ? `Add ${money(remaining / 100)} more` : checkoutLive ? 'Secure checkout is being activated' : 'Checkout connection coming next';
+  checkoutButton.disabled = subtotalCents < MINIMUM_CENTS || !checkoutLive;
+  checkoutButton.textContent = subtotalCents < MINIMUM_CENTS ? `Add ${money(remaining / 100)} more` : checkoutLive ? 'Continue to secure checkout' : 'Checkout is being activated';
   cartMessage.textContent = subtotalCents < MINIMUM_CENTS ? 'Low-cost singles can be combined with any other store inventory.' : 'Checking current inventory and pricing…';
   void verifyCart();
+}
+
+async function startCheckout() {
+  if (!cart.length || checkoutButton.disabled) return;
+  checkoutButton.disabled = true;
+  checkoutButton.textContent = 'Opening secure checkout…';
+  cartMessage.textContent = 'Verifying inventory and creating your protected Stripe checkout…';
+  try {
+    const response = await fetch(`${API_ORIGIN}/api/storefront/cart/checkout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: cart }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.success || !payload.data?.checkoutUrl) throw new Error(payload.error || 'Secure checkout could not be started.');
+    location.assign(payload.data.checkoutUrl);
+  } catch (error) {
+    renderCart();
+    cartMessage.textContent = error instanceof Error ? error.message : 'Secure checkout could not be started.';
+  }
 }
 
 function renderFilters() {
@@ -386,11 +411,12 @@ async function loadStore() {
     const statusPayload = await statusResponse.json();
     if (!listingResponse.ok || !listingPayload.success) throw new Error('Inventory unavailable');
     inventory = Array.isArray(listingPayload.data) ? listingPayload.data : [];
-    const live = statusResponse.ok && statusPayload.data?.checkout === 'live' && statusPayload.data?.fulfillment === 'live';
+    const live = statusResponse.ok && statusPayload.data?.checkout === 'live';
+    const fulfillmentLive = statusResponse.ok && statusPayload.data?.fulfillment === 'live';
     checkoutLive = live;
     status.className = `store-status ${live ? 'is-live' : 'is-preparing'}`;
     status.lastElementChild.textContent = live
-      ? 'Protected checkout and fulfillment are live.'
+      ? checkoutReturn === 'success' ? 'Payment received. Your order is ready for Cambinos fulfillment.' : checkoutReturn === 'cancelled' ? 'Checkout was cancelled. Your saved cart is still here.' : fulfillmentLive ? 'Protected checkout and fulfillment are live.' : 'Secure checkout is live. Shipping details are protected in Stripe.'
       : 'Official inventory is open for browsing. Protected checkout is being connected.';
     renderFilters();
     renderSetOptions();
@@ -411,5 +437,6 @@ launchForm.addEventListener('submit', joinAppLaunchList);
 retry.addEventListener('click', loadStore);
 cartButton.addEventListener('click', () => cartDialog.showModal());
 cartClose.addEventListener('click', () => cartDialog.close());
+checkoutButton.addEventListener('click', startCheckout);
 cartDialog.addEventListener('click', (event) => { if (event.target === cartDialog) cartDialog.close(); });
 loadStore();
