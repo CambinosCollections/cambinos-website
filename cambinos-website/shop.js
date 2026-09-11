@@ -28,6 +28,10 @@ const minimumText = document.getElementById('storeMinimumText');
 const minimumProgress = document.getElementById('storeMinimumProgress');
 const cartMessage = document.getElementById('storeCartMessage');
 const checkoutButton = document.getElementById('storeCheckoutButton');
+const launchForm = document.getElementById('storeLaunchForm');
+const launchSubmit = document.getElementById('storeLaunchSubmit');
+const launchMessage = document.getElementById('storeLaunchMessage');
+const launchSuccess = document.getElementById('storeLaunchSuccess');
 const CART_KEY = 'cambinos-official-store-cart-v1';
 const MINIMUM_CENTS = 1000;
 const ADD_ON_CENTS = 300;
@@ -332,6 +336,41 @@ function resetStoreFilters() {
   renderInventory();
 }
 
+async function joinAppLaunchList(event) {
+  event.preventDefault();
+  launchMessage.textContent = '';
+  launchMessage.classList.remove('is-error');
+  if (!launchForm.reportValidity()) return;
+  const formData = new FormData(launchForm);
+  launchSubmit.disabled = true;
+  launchSubmit.textContent = 'Joining…';
+  try {
+    const response = await fetch(`${API_ORIGIN}/api/waitlist`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: formData.get('email'),
+        interest: '',
+        company: formData.get('company'),
+        consent: formData.get('consent') === 'on',
+        source: 'official-store-app-launch',
+        referralCode: new URLSearchParams(location.search).get('ref') || '',
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.success) throw new Error(payload.error || 'We could not add you right now. Please try again.');
+    launchForm.hidden = true;
+    launchSuccess.hidden = false;
+    launchSuccess.focus({ preventScroll: true });
+  } catch (error) {
+    launchMessage.textContent = error instanceof Error ? error.message : 'We could not add you right now. Please try again.';
+    launchMessage.classList.add('is-error');
+  } finally {
+    launchSubmit.disabled = false;
+    launchSubmit.textContent = 'Notify me';
+  }
+}
+
 async function loadStore() {
   grid.replaceChildren();
   empty.hidden = true;
@@ -368,6 +407,7 @@ setFilter.addEventListener('change', renderInventory);
 typeFilter.addEventListener('change', renderInventory);
 sortSelect.addEventListener('change', renderInventory);
 clearFilters.addEventListener('click', resetStoreFilters);
+launchForm.addEventListener('submit', joinAppLaunchList);
 retry.addEventListener('click', loadStore);
 cartButton.addEventListener('click', () => cartDialog.showModal());
 cartClose.addEventListener('click', () => cartDialog.close());

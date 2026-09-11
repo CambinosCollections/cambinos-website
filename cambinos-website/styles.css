@@ -1585,6 +1585,29 @@ footer {
 .store-empty h3, .store-error h3 { font-size: 1.55rem; }
 .store-empty p, .store-error p { max-width: 600px; margin: 10px auto 24px; color: var(--muted); }
 .store-no-results { grid-column: 1 / -1; padding: 48px 20px; border: 1px dashed var(--border); border-radius: 18px; color: var(--muted); text-align: center; }
+.store-launch { padding: 0 0 90px; }
+.store-launch-shell { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(420px, 1.1fr); align-items: center; gap: clamp(32px, 7vw, 88px); padding: clamp(28px, 5vw, 54px); border: 1px solid #5a4817; border-radius: 26px; background: radial-gradient(circle at 85% 15%, rgba(216, 182, 63, 0.14), transparent 22rem), rgba(12, 13, 14, 0.94); box-shadow: 0 28px 75px rgba(0,0,0,0.28); }
+.store-launch-copy h2 { margin-top: 8px; font-size: clamp(2rem, 4vw, 3.6rem); line-height: 1.02; letter-spacing: -0.05em; }
+.store-launch-copy > p:not(.eyebrow) { max-width: 590px; margin-top: 18px; color: var(--muted-light); font-size: 1rem; line-height: 1.65; }
+.store-launch-points { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+.store-launch-points span { padding: 7px 10px; border: 1px solid rgba(216,182,63,0.25); border-radius: 999px; background: rgba(33,27,13,0.72); color: var(--accent-hover); font-size: 0.8rem; font-weight: 700; }
+.store-launch-card { padding: clamp(20px, 4vw, 30px); border: 1px solid var(--border); border-radius: 18px; background: rgba(16,18,20,0.96); }
+.store-launch-form > label:first-child { display: block; margin-bottom: 8px; color: var(--muted-light); font-size: 0.9rem; font-weight: 700; }
+.store-launch-input-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
+.store-launch-input-row input { min-width: 0; min-height: 52px; padding: 0 15px; border: 1px solid var(--border); border-radius: 12px; outline: 0; background: var(--background-soft); color: var(--text); font: inherit; font-size: 1rem; }
+.store-launch-input-row input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(216,182,63,0.12); }
+.store-launch-input-row .button { border: 0; cursor: pointer; }
+.store-launch-input-row .button:disabled { cursor: wait; opacity: 0.65; }
+.store-launch-consent { display: flex; align-items: flex-start; gap: 10px; margin-top: 16px; color: var(--muted-light); font-size: 0.86rem; line-height: 1.5; cursor: pointer; }
+.store-launch-consent input { width: 18px; height: 18px; flex: 0 0 auto; margin-top: 2px; accent-color: var(--accent); }
+.store-launch-privacy { margin-top: 12px; color: var(--muted); font-size: 0.78rem; }
+.store-launch-privacy a { color: var(--accent-hover); }
+.store-launch-message { min-height: 1.4em; margin-top: 10px; color: var(--success); font-size: 0.85rem; }
+.store-launch-message.is-error { color: #fda4af; }
+.store-launch-success { display: flex; align-items: center; gap: 16px; min-height: 130px; outline: 0; }
+.store-launch-success-icon { width: 48px; height: 48px; display: grid; place-items: center; flex: 0 0 auto; border: 1px solid rgba(110,231,183,0.35); border-radius: 50%; background: rgba(110,231,183,0.1); color: var(--success); font-size: 1.2rem; font-weight: 900; }
+.store-launch-success strong { font-family: "Bree Serif", Georgia, serif; font-size: 1.35rem; font-weight: 400; }
+.store-launch-success p { margin-top: 6px; color: var(--muted); font-size: 0.9rem; }
 .store-how { padding: 0 0 90px; }
 .store-how-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
 .store-how article { padding: 24px; border-top: 1px solid rgba(216,182,63,0.48); background: rgba(16,18,20,0.72); }
@@ -1634,6 +1657,7 @@ footer {
   .store-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .store-refinements { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .store-clear-filters { align-self: end; }
+  .store-launch-shell { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 680px) {
@@ -1643,6 +1667,10 @@ footer {
   .store-catalog-nav-heading { align-items: start; flex-direction: column; gap: 8px; }
   .store-refinements { grid-template-columns: 1fr; }
   .store-clear-filters { width: 100%; }
+  .store-launch { padding: 0 14px 68px; }
+  .store-launch-shell { padding: 24px 18px; }
+  .store-launch-input-row { grid-template-columns: 1fr; }
+  .store-launch-input-row .button { width: 100%; }
   .store-grid, .store-how-grid { grid-template-columns: 1fr; }
   .store-card-visual { height: 260px; }
   .store-card-footer { align-items: stretch; flex-direction: column; }

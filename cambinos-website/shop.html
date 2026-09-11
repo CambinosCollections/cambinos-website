@@ -21,6 +21,7 @@
         <div class="nav-links">
           <a href="index.html">Home</a>
           <a href="shop.html" aria-current="page">Shop</a>
+          <a href="#app-launch">Get the app</a>
           <a href="https://app.cambinoscollections.com/marketplace">Marketplace</a>
         </div>
         <button class="button button-small store-cart-button" id="storeCartButton" type="button" aria-haspopup="dialog">
@@ -112,6 +113,42 @@
           <h3>The store could not load right now.</h3>
           <p>Your inventory is safe. Please refresh the page in a moment.</p>
           <button class="button button-secondary" id="storeRetry" type="button">Try again</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="store-launch" id="app-launch" aria-labelledby="storeLaunchTitle">
+      <div class="container store-launch-shell">
+        <div class="store-launch-copy">
+          <p class="eyebrow">Cambinos mobile</p>
+          <h2 id="storeLaunchTitle">Get the app when it drops.</h2>
+          <p>Join the launch list and we’ll email you when Cambinos is ready to download or when a private beta spot opens.</p>
+          <div class="store-launch-points" aria-label="Mailing list benefits">
+            <span>App launch notice</span><span>Private beta openings</span><span>Major feature updates</span>
+          </div>
+        </div>
+        <div class="store-launch-card">
+          <form id="storeLaunchForm" class="store-launch-form" novalidate>
+            <label for="storeLaunchEmail">Email address</label>
+            <div class="store-launch-input-row">
+              <input id="storeLaunchEmail" name="email" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com" required>
+              <button class="button" id="storeLaunchSubmit" type="submit">Notify me</button>
+            </div>
+            <div class="waitlist-honeypot" aria-hidden="true">
+              <label for="storeLaunchCompany">Company</label>
+              <input id="storeLaunchCompany" name="company" type="text" tabindex="-1" autocomplete="off">
+            </div>
+            <label class="store-launch-consent" for="storeLaunchConsent">
+              <input id="storeLaunchConsent" name="consent" type="checkbox" required>
+              <span>I agree to receive Cambinos beta and launch updates. I can unsubscribe at any time.</span>
+            </label>
+            <p class="store-launch-privacy">No spam. See our <a href="privacy.html">Privacy Policy</a>.</p>
+            <p class="store-launch-message" id="storeLaunchMessage" role="status" aria-live="polite"></p>
+          </form>
+          <div class="store-launch-success" id="storeLaunchSuccess" tabindex="-1" hidden>
+            <span class="store-launch-success-icon" aria-hidden="true">✓</span>
+            <div><strong>You’re on the Cambinos launch list.</strong><p>We’ll email you when the app is ready.</p></div>
+          </div>
         </div>
       </div>
     </section>
