@@ -96,7 +96,7 @@ function productCard(listing) {
     image.loading = 'lazy';
     visual.append(image);
   } else {
-    visual.append(element('span', 'store-card-placeholder', 'C'));
+    visual.append(element('span', 'store-card-placeholder', '𝕮𝕮'));
   }
   const badge = element('span', 'store-card-badge', listing.product?.isSealed ? 'Sealed' : label(listing.listingKind));
   visual.append(badge);
@@ -138,7 +138,7 @@ function cartLine(listing, quantity) {
     image.alt = '';
     imageWrap.append(image);
   } else {
-    imageWrap.append(element('span', '', 'C'));
+    imageWrap.append(element('span', '', '𝕮𝕮'));
   }
   const info = element('div', 'store-cart-line-info');
   info.append(element('h3', '', listing.title));
