@@ -9,6 +9,12 @@ const errorPanel = document.getElementById('storeError');
 const filters = document.getElementById('storeFilters');
 const status = document.getElementById('storeStatus');
 const search = document.getElementById('storeSearch');
+const catalogSummary = document.getElementById('storeCatalogSummary');
+const setFilter = document.getElementById('storeSetFilter');
+const typeFilter = document.getElementById('storeTypeFilter');
+const sortSelect = document.getElementById('storeSort');
+const clearFilters = document.getElementById('storeClearFilters');
+const resultsSummary = document.getElementById('storeResultsSummary');
 const retry = document.getElementById('storeRetry');
 const cartDialog = document.getElementById('storeCart');
 const cartButton = document.getElementById('storeCartButton');
@@ -25,8 +31,24 @@ const checkoutButton = document.getElementById('storeCheckoutButton');
 const CART_KEY = 'cambinos-official-store-cart-v1';
 const MINIMUM_CENTS = 1000;
 const ADD_ON_CENTS = 300;
+const CATALOGS = [
+  { key: 'all', label: 'All inventory' },
+  { key: 'pokemon', label: 'Pokémon', match: /pok[eé]mon|pokemon tcg/ },
+  { key: 'magic', label: 'Magic', match: /magic:?(?: the)? gathering|\bmtg\b|scryfall/ },
+  { key: 'yu_gi_oh', label: 'Yu-Gi-Oh!', match: /yu[- ]?gi[- ]?oh|yugioh/ },
+  { key: 'lorcana', label: 'Lorcana', match: /lorcana/ },
+  { key: 'one_piece', label: 'One Piece', match: /one piece|optcg/ },
+  { key: 'sports', label: 'Sports', match: /sports? cards?|baseball|football|basketball|hockey|soccer|\bmlb\b|\bnfl\b|\bnba\b|\bnhl\b|topps|bowman|panini|donruss|upper deck/ },
+  { key: 'digimon', label: 'Digimon', match: /digimon/ },
+  { key: 'gundam', label: 'Gundam', match: /gundam/ },
+  { key: 'riftbound', label: 'Riftbound', match: /riftbound/ },
+  { key: 'dragon_ball', label: 'Dragon Ball FW', match: /dragon ball|fusion world/ },
+  { key: 'invincible', label: 'Invincible', match: /invincible/ },
+  { key: 'other', label: 'Other collectibles' },
+];
+const CATALOG_MATCH_ORDER = ['pokemon', 'magic', 'yu_gi_oh', 'lorcana', 'one_piece', 'digimon', 'gundam', 'riftbound', 'dragon_ball', 'invincible', 'sports'];
 let inventory = [];
-let activeCategory = 'All';
+let activeCatalog = 'all';
 let checkoutLive = false;
 let cart = readCart();
 
@@ -66,6 +88,37 @@ function priceCents(listing) {
   return Math.round((Number(listing?.price) || 0) * 100);
 }
 
+function listingSearchText(listing) {
+  return [
+    listing.title,
+    listing.description,
+    listing.product?.name,
+    listing.product?.category,
+    listing.product?.productType,
+    listing.product?.manufacturer,
+    listing.product?.series,
+    listing.product?.setName,
+    listing.product?.setCode,
+    listing.product?.itemNumber,
+    listing.product?.edition,
+  ].filter(Boolean).join(' ').toLowerCase();
+}
+
+function listingCatalogKey(listing) {
+  const text = listingSearchText(listing);
+  return CATALOG_MATCH_ORDER.map((key) => CATALOGS.find((catalog) => catalog.key === key)).find((catalog) => catalog?.match?.test(text))?.key || 'other';
+}
+
+function catalogLabel(key) {
+  return CATALOGS.find((catalog) => catalog.key === key)?.label || 'Other collectibles';
+}
+
+function listingProductType(listing) {
+  if (listing.product?.isSealed) return 'sealed';
+  if (['team_set', 'complete_set', 'master_set', 'binder'].includes(listing.listingKind)) return 'collection';
+  return 'single';
+}
+
 function cartEntry(listingId) {
   return cart.find((item) => item.listingId === listingId);
 }
@@ -103,7 +156,7 @@ function productCard(listing) {
   if (priceCents(listing) < ADD_ON_CENTS) visual.append(element('span', 'store-card-addon', 'Add-on card'));
 
   const body = element('div', 'store-card-body');
-  body.append(element('p', 'store-card-category', listing.product?.category || 'Collectible'));
+  body.append(element('p', 'store-card-category', `${catalogLabel(listingCatalogKey(listing))} · ${listing.product?.category || 'Collectible'}`));
   body.append(element('h3', '', listing.title));
   const details = [listing.product?.setName, listing.product?.itemNumber ? `#${listing.product.itemNumber}` : null, listing.product?.edition].filter(Boolean).join(' · ');
   if (details) body.append(element('p', 'store-card-details', details));
@@ -212,28 +265,71 @@ function renderCart() {
 }
 
 function renderFilters() {
-  const categories = ['All', ...new Set(inventory.map((item) => item.product?.category).filter(Boolean))];
-  filters.replaceChildren(...categories.map((category) => {
-    const button = element('button', `store-filter${category === activeCategory ? ' is-active' : ''}`, category);
+  filters.replaceChildren(...CATALOGS.map((catalog) => {
+    const count = catalog.key === 'all' ? inventory.length : inventory.filter((listing) => listingCatalogKey(listing) === catalog.key).length;
+    const button = element('button', `store-filter${catalog.key === activeCatalog ? ' is-active' : ''}`, `${catalog.label} ${count}`);
     button.type = 'button';
-    button.addEventListener('click', () => { activeCategory = category; renderFilters(); renderInventory(); });
+    button.role = 'tab';
+    button.setAttribute('aria-selected', String(catalog.key === activeCatalog));
+    button.addEventListener('click', () => {
+      activeCatalog = catalog.key;
+      setFilter.value = 'All';
+      renderFilters();
+      renderSetOptions();
+      renderInventory();
+    });
     return button;
   }));
 }
 
+function inventoryForActiveCatalog() {
+  return activeCatalog === 'all' ? inventory : inventory.filter((listing) => listingCatalogKey(listing) === activeCatalog);
+}
+
+function renderSetOptions() {
+  const current = setFilter.value;
+  const sets = [...new Set(inventoryForActiveCatalog().map((listing) => listing.product?.setName).filter(Boolean))]
+    .sort((left, right) => left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' }));
+  const options = [element('option', '', 'All sets'), ...sets.map((setName) => element('option', '', setName))];
+  options[0].value = 'All';
+  sets.forEach((setName, index) => { options[index + 1].value = setName; });
+  setFilter.replaceChildren(...options);
+  setFilter.value = sets.includes(current) ? current : 'All';
+  const selectedCatalog = catalogLabel(activeCatalog);
+  catalogSummary.textContent = activeCatalog === 'all' ? 'All available products' : `${selectedCatalog} inventory`;
+}
+
 function renderInventory() {
   const query = search.value.trim().toLowerCase();
-  const visible = inventory.filter((listing) => {
-    if (activeCategory !== 'All' && listing.product?.category !== activeCategory) return false;
-    if (!query) return true;
-    return [listing.title, listing.description, listing.product?.name, listing.product?.setName, listing.product?.category]
-      .some((value) => String(value || '').toLowerCase().includes(query));
+  const selectedSet = setFilter.value;
+  const selectedType = typeFilter.value;
+  const visible = inventoryForActiveCatalog().filter((listing) => {
+    if (selectedSet !== 'All' && listing.product?.setName !== selectedSet) return false;
+    if (selectedType !== 'All' && listingProductType(listing) !== selectedType) return false;
+    return !query || listingSearchText(listing).includes(query);
+  }).sort((left, right) => {
+    if (sortSelect.value === 'price-low') return Number(left.price) - Number(right.price);
+    if (sortSelect.value === 'price-high') return Number(right.price) - Number(left.price);
+    if (sortSelect.value === 'name') return left.title.localeCompare(right.title, undefined, { numeric: true, sensitivity: 'base' });
+    return String(right.publishedAt || '').localeCompare(String(left.publishedAt || ''));
   });
   grid.replaceChildren(...visible.map(productCard));
-  empty.hidden = inventory.length > 0 || query.length > 0 || activeCategory !== 'All';
+  empty.hidden = inventory.length > 0;
+  resultsSummary.textContent = `${visible.length} ${visible.length === 1 ? 'listing' : 'listings'} shown${activeCatalog === 'all' ? '' : ` in ${catalogLabel(activeCatalog)}`}`;
   if (!visible.length && inventory.length) {
-    grid.append(element('p', 'store-no-results', 'No official inventory matches that search. Try a different name or category.'));
+    grid.append(element('p', 'store-no-results', `No ${activeCatalog === 'all' ? 'official inventory' : catalogLabel(activeCatalog) + ' inventory'} matches these filters yet. Try another catalog, set, or search.`));
   }
+}
+
+function resetStoreFilters() {
+  activeCatalog = 'all';
+  search.value = '';
+  typeFilter.value = 'All';
+  sortSelect.value = 'newest';
+  renderFilters();
+  renderSetOptions();
+  setFilter.value = 'All';
+  renderInventory();
 }
 
 async function loadStore() {
@@ -244,7 +340,7 @@ async function loadStore() {
   status.lastElementChild.textContent = 'Connecting to official Cambinos inventory…';
   try {
     const [listingResponse, statusResponse] = await Promise.all([
-      fetch(`${API_ORIGIN}/api/storefront/listings?limit=100`),
+      fetch(`${API_ORIGIN}/api/storefront/listings?limit=500`),
       fetch(`${API_ORIGIN}/api/storefront/status`),
     ]);
     const listingPayload = await listingResponse.json();
@@ -258,6 +354,7 @@ async function loadStore() {
       ? 'Protected checkout and fulfillment are live.'
       : 'Official inventory is open for browsing. Protected checkout is being connected.';
     renderFilters();
+    renderSetOptions();
     renderInventory();
     renderCart();
   } catch (_error) {
@@ -267,6 +364,10 @@ async function loadStore() {
 }
 
 search.addEventListener('input', renderInventory);
+setFilter.addEventListener('change', renderInventory);
+typeFilter.addEventListener('change', renderInventory);
+sortSelect.addEventListener('change', renderInventory);
+clearFilters.addEventListener('click', resetStoreFilters);
 retry.addEventListener('click', loadStore);
 cartButton.addEventListener('click', () => cartDialog.showModal());
 cartClose.addEventListener('click', () => cartDialog.close());

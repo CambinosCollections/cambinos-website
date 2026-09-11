@@ -63,7 +63,42 @@
           <span>Connecting to official Cambinos inventory…</span>
         </div>
 
-        <div class="store-filters" id="storeFilters" aria-label="Inventory categories"></div>
+        <div class="store-catalog-nav">
+          <div class="store-catalog-nav-heading">
+            <div>
+              <p class="eyebrow">Browse by catalog</p>
+              <h3>Trading cards &amp; sports</h3>
+            </div>
+            <p id="storeCatalogSummary">All available products</p>
+          </div>
+          <div class="store-filters" id="storeFilters" role="tablist" aria-label="Card catalogs"></div>
+          <div class="store-refinements" aria-label="Refine inventory">
+            <label>
+              <span>Set</span>
+              <select id="storeSetFilter"><option value="All">All sets</option></select>
+            </label>
+            <label>
+              <span>Product</span>
+              <select id="storeTypeFilter">
+                <option value="All">All products</option>
+                <option value="single">Single cards</option>
+                <option value="sealed">Sealed products</option>
+                <option value="collection">Sets &amp; binders</option>
+              </select>
+            </label>
+            <label>
+              <span>Sort</span>
+              <select id="storeSort">
+                <option value="newest">Newest listings</option>
+                <option value="price-low">Price: low to high</option>
+                <option value="price-high">Price: high to low</option>
+                <option value="name">Name: A to Z</option>
+              </select>
+            </label>
+            <button class="store-clear-filters" id="storeClearFilters" type="button">Clear filters</button>
+          </div>
+        </div>
+        <p class="store-results-summary" id="storeResultsSummary" aria-live="polite"></p>
         <div class="store-grid" id="storeGrid" aria-live="polite"></div>
 
         <div class="store-empty" id="storeEmpty" hidden>
