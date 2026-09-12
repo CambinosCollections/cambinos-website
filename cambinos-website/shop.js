@@ -2,6 +2,7 @@ const API_ORIGIN = location.hostname === 'localhost' || location.hostname === '1
   ? 'http://localhost:4000'
   : 'https://api.cambinoscollections.com';
 const APP_ORIGIN = 'https://app.cambinoscollections.com';
+const STORE_PAUSED = document.body.dataset.storePaused === 'true';
 
 const grid = document.getElementById('storeGrid');
 const empty = document.getElementById('storeEmpty');
@@ -428,15 +429,22 @@ async function loadStore() {
   }
 }
 
-search.addEventListener('input', renderInventory);
-setFilter.addEventListener('change', renderInventory);
-typeFilter.addEventListener('change', renderInventory);
-sortSelect.addEventListener('change', renderInventory);
-clearFilters.addEventListener('click', resetStoreFilters);
 launchForm.addEventListener('submit', joinAppLaunchList);
-retry.addEventListener('click', loadStore);
-cartButton.addEventListener('click', () => cartDialog.showModal());
-cartClose.addEventListener('click', () => cartDialog.close());
-checkoutButton.addEventListener('click', startCheckout);
-cartDialog.addEventListener('click', (event) => { if (event.target === cartDialog) cartDialog.close(); });
-loadStore();
+if (STORE_PAUSED) {
+  checkoutLive = false;
+  cart = [];
+  localStorage.removeItem(CART_KEY);
+  cartButton.disabled = true;
+} else {
+  search.addEventListener('input', renderInventory);
+  setFilter.addEventListener('change', renderInventory);
+  typeFilter.addEventListener('change', renderInventory);
+  sortSelect.addEventListener('change', renderInventory);
+  clearFilters.addEventListener('click', resetStoreFilters);
+  retry.addEventListener('click', loadStore);
+  cartButton.addEventListener('click', () => cartDialog.showModal());
+  cartClose.addEventListener('click', () => cartDialog.close());
+  checkoutButton.addEventListener('click', startCheckout);
+  cartDialog.addEventListener('click', (event) => { if (event.target === cartDialog) cartDialog.close(); });
+  loadStore();
+}

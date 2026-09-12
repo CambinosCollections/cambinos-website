@@ -10,7 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Bree+Serif&family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
-<body class="store-page">
+<body class="store-page" data-store-paused="true">
   <header class="site-header">
     <div class="container">
       <nav class="navbar">
@@ -22,10 +22,10 @@
           <a href="index.html">Home</a>
           <a href="shop.html" aria-current="page">Shop</a>
           <a href="#app-launch">Get the app</a>
-          <a href="https://app.cambinoscollections.com/marketplace">Marketplace</a>
+          <a href="#app-launch">Join the launch list</a>
         </div>
-        <button class="button button-small store-cart-button" id="storeCartButton" type="button" aria-haspopup="dialog">
-          Cart <span id="storeCartCount" aria-label="0 items">0</span>
+        <button class="button button-small store-cart-button" id="storeCartButton" type="button" disabled>
+          Inventory soon <span id="storeCartCount" aria-label="0 items" hidden>0</span>
         </button>
       </nav>
     </div>
@@ -35,23 +35,37 @@
     <section class="store-hero">
       <div class="container store-hero-layout">
         <div>
-          <p class="eyebrow">Official Cambinos store</p>
-          <h1>Build a cart. Keep more value in the collection.</h1>
-          <p>Shop cards, sealed products, complete sets, and binders sold directly by Cambinos Collections. Combine low-cost singles into one order and one payment.</p>
+          <p class="eyebrow">Official Cambinos store · opening soon</p>
+          <h1>Fresh inventory is being scanned.</h1>
+          <p>We are cataloging cards, sealed products, complete sets, and binders before opening the store. Join the launch list and be first to know when the shelves go live.</p>
         </div>
         <div class="store-promise">
           <span class="store-promise-mark">𝕮𝕮</span>
-          <div><strong>Sold by Cambinos Collections</strong><p>Official inventory only. $10 merchandise minimum. Shipping is calculated separately at checkout.</p></div>
+          <div><strong>Storefront temporarily paused</strong><p>No products are available for purchase while official inventory is photographed, verified, and priced.</p></div>
         </div>
       </div>
     </section>
 
     <section class="store-catalog" aria-labelledby="storeHeading">
       <div class="container">
-        <div class="store-toolbar">
+        <div class="store-paused-panel">
+          <span class="store-paused-mark" aria-hidden="true">𝕮𝕮</span>
+          <p class="eyebrow">Stocking the vault</p>
+          <h2 id="storeHeading">The official shop is coming soon.</h2>
+          <p>Every listing will include verified card details, clear photos, variant information, quantity, and market-based pricing. Nothing can be purchased until the inventory is ready.</p>
+          <div class="store-paused-progress" aria-label="Store preparation steps">
+            <span><strong>01</strong> Scan</span>
+            <span><strong>02</strong> Verify</span>
+            <span><strong>03</strong> Price</span>
+            <span><strong>04</strong> Open</span>
+          </div>
+          <a class="button" href="#app-launch">Notify me when the store opens</a>
+        </div>
+
+        <div class="store-toolbar" hidden>
           <div>
             <p class="eyebrow">Available inventory</p>
-            <h2 id="storeHeading">Shop the collection</h2>
+            <h2>Shop the collection</h2>
           </div>
           <div class="store-search-wrap">
             <label for="storeSearch">Search inventory</label>
@@ -59,12 +73,12 @@
           </div>
         </div>
 
-        <div class="store-status" id="storeStatus" role="status" aria-live="polite">
+        <div class="store-status" id="storeStatus" role="status" aria-live="polite" hidden>
           <span class="store-status-dot"></span>
           <span>Connecting to official Cambinos inventory…</span>
         </div>
 
-        <div class="store-catalog-nav">
+        <div class="store-catalog-nav" hidden>
           <div class="store-catalog-nav-heading">
             <div>
               <p class="eyebrow">Browse by catalog</p>
@@ -99,8 +113,8 @@
             <button class="store-clear-filters" id="storeClearFilters" type="button">Clear filters</button>
           </div>
         </div>
-        <p class="store-results-summary" id="storeResultsSummary" aria-live="polite"></p>
-        <div class="store-grid" id="storeGrid" aria-live="polite"></div>
+        <p class="store-results-summary" id="storeResultsSummary" aria-live="polite" hidden></p>
+        <div class="store-grid" id="storeGrid" aria-live="polite" hidden></div>
 
         <div class="store-empty" id="storeEmpty" hidden>
           <span class="store-empty-mark">𝕮𝕮</span>
@@ -155,9 +169,9 @@
 
     <section class="store-how">
       <div class="container store-how-grid">
-        <article><span>01</span><h3>Browse openly</h3><p>Anyone can view official inventory without creating an account.</p></article>
-        <article><span>02</span><h3>Combine small cards</h3><p>Low-cost singles are add-ons. Put several cards into one cart to protect the value of the order.</p></article>
-        <article><span>03</span><h3>Check out once</h3><p>One combined payment covers the whole cart. Shipping and applicable tax are added at checkout.</p></article>
+        <article><span>01</span><h3>Accurate inventory</h3><p>Cards are scanned into the Business Vault before they appear for sale.</p></article>
+        <article><span>02</span><h3>Verified listings</h3><p>Variants, quantities, photos, and market evidence are reviewed before publishing.</p></article>
+        <article><span>03</span><h3>One opening notice</h3><p>Join the email list and we’ll let you know when official shopping begins.</p></article>
       </div>
     </section>
   </main>
