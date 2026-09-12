@@ -1575,6 +1575,7 @@ footer {
 .store-card-price span { color: var(--muted); font-size: 0.72rem; }
 .store-buy-button { min-height: 44px; padding: 10px 15px; white-space: nowrap; }
 .store-cart-button { border: 0; cursor: pointer; }
+.store-page [hidden] { display: none !important; }
 .store-cart-button:disabled { cursor: default; opacity: 0.78; }
 .store-paused-panel { max-width: 900px; margin: 0 auto; padding: clamp(38px, 7vw, 72px); border: 1px solid #5a4817; border-radius: 28px; background: radial-gradient(circle at top right, rgba(238,197,51,0.13), transparent 34%), linear-gradient(145deg, #11161a, #090c0f); text-align: center; box-shadow: 0 28px 80px rgba(0,0,0,0.28); }
 .store-paused-mark { display: grid; width: 86px; height: 86px; margin: 0 auto 24px; place-items: center; border: 1px solid #8b6f19; border-radius: 24px; background: #171409; color: var(--accent); font-family: "Bree Serif", serif; font-size: 2rem; }
