@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bree+Serif&family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20260911-store-pause">
+  <link rel="stylesheet" href="styles.css?v=20260927-polish">
 </head>
 <body class="store-page" data-store-paused="true">
   <header class="site-header">
@@ -22,7 +22,7 @@
           <a href="index.html">Home</a>
           <a href="shop.html" aria-current="page">Shop</a>
           <a href="#app-launch">Get the app</a>
-          <a href="#app-launch">Join the launch list</a>
+          <a href="mailto:support@cambinoscollections.com">Contact</a>
         </div>
         <button class="button button-small store-cart-button" id="storeCartButton" type="button" disabled>
           Inventory soon <span id="storeCartCount" aria-label="0 items" hidden>0</span>
@@ -36,12 +36,13 @@
       <div class="container store-hero-layout">
         <div>
           <p class="eyebrow">Official Cambinos store · opening soon</p>
-          <h1>Fresh inventory is being scanned.</h1>
-          <p>We are cataloging cards, sealed products, complete sets, and binders before opening the store. Join the launch list and be first to know when the shelves go live.</p>
+          <h1>Your next great find.<br><span class="store-gold">Coming to Cambinos.</span></h1>
+          <p>Single cards, sealed products, and collections from our own inventory. We’re preparing the first drop—join the list for the opening announcement.</p>
+          <a class="button store-hero-cta" href="#app-launch">Get the opening notice</a>
         </div>
         <div class="store-promise">
           <span class="store-promise-mark">𝕮𝕮</span>
-          <div><strong>Storefront temporarily paused</strong><p>No products are available for purchase while official inventory is photographed, verified, and priced.</p></div>
+          <div><strong>From our collection to yours</strong><p>Photos, condition, exact printing, and clear pricing. Shopping opens when our first inventory is ready.</p></div>
         </div>
       </div>
     </section>
@@ -51,8 +52,8 @@
         <div class="store-paused-panel">
           <span class="store-paused-mark" aria-hidden="true">𝕮𝕮</span>
           <p class="eyebrow">Stocking the vault</p>
-          <h2 id="storeHeading">The official shop is coming soon.</h2>
-          <p>Every listing will include verified card details, clear photos, variant information, quantity, and market-based pricing. Nothing can be purchased until the inventory is ready.</p>
+          <h2 id="storeHeading">Know exactly what you’re collecting.</h2>
+          <p>We’re checking photos, card details, quantities, and prices before the first drop. Checkout is not open yet.</p>
           <div class="store-paused-progress" aria-label="Store preparation steps">
             <span><strong>01</strong> Scan</span>
             <span><strong>02</strong> Verify</span>
@@ -134,11 +135,11 @@
     <section class="store-launch" id="app-launch" aria-labelledby="storeLaunchTitle">
       <div class="container store-launch-shell">
         <div class="store-launch-copy">
-          <p class="eyebrow">Cambinos mobile</p>
-          <h2 id="storeLaunchTitle">Get the app when it drops.</h2>
-          <p>Join the launch list and we’ll email you when Cambinos is ready to download or when a private beta spot opens.</p>
+          <p class="eyebrow">Be first in line</p>
+          <h2 id="storeLaunchTitle">First drops. App news.<br>One list.</h2>
+          <p>Get an email when the shop opens, the app launches, or a private beta spot becomes available.</p>
           <div class="store-launch-points" aria-label="Mailing list benefits">
-            <span>App launch notice</span><span>Private beta openings</span><span>Major feature updates</span>
+            <span>Shop opening</span><span>App launch</span><span>Private beta openings</span>
           </div>
         </div>
         <div class="store-launch-card">
@@ -154,14 +155,14 @@
             </div>
             <label class="store-launch-consent" for="storeLaunchConsent">
               <input id="storeLaunchConsent" name="consent" type="checkbox" required>
-              <span>I agree to receive Cambinos beta and launch updates. I can unsubscribe at any time.</span>
+              <span>I agree to receive Cambinos shop-opening, app-launch, and beta updates. I can unsubscribe at any time.</span>
             </label>
             <p class="store-launch-privacy">No spam. See our <a href="privacy.html">Privacy Policy</a>.</p>
             <p class="store-launch-message" id="storeLaunchMessage" role="status" aria-live="polite"></p>
           </form>
           <div class="store-launch-success" id="storeLaunchSuccess" tabindex="-1" hidden>
             <span class="store-launch-success-icon" aria-hidden="true">✓</span>
-            <div><strong>You’re on the Cambinos launch list.</strong><p>We’ll email you when the app is ready.</p></div>
+            <div><strong>You’re on the Cambinos launch list.</strong><p>Watch your inbox for shop-opening, app, and beta news.</p></div>
           </div>
         </div>
       </div>

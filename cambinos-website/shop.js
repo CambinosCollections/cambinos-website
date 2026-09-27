@@ -57,10 +57,8 @@ let activeCatalog = 'all';
 let checkoutLive = false;
 let cart = readCart();
 const checkoutReturn = new URLSearchParams(location.search).get('checkout');
-if (checkoutReturn === 'success') {
-  localStorage.removeItem(CART_KEY);
-  cart = [];
-}
+// A return URL is not proof of payment. Preserve the cart until an order is
+// confirmed by the server; Stripe webhooks remain the payment authority.
 
 function readCart() {
   try {
@@ -75,7 +73,7 @@ function readCart() {
 }
 
 function saveCart() {
-  localStorage.setItem(CART_KEY, JSON.stringify(cart));
+  try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); } catch (_error) { /* Keep this session usable when storage is blocked. */ }
   renderCart();
 }
 
@@ -417,7 +415,7 @@ async function loadStore() {
     checkoutLive = live;
     status.className = `store-status ${live ? 'is-live' : 'is-preparing'}`;
     status.lastElementChild.textContent = live
-      ? checkoutReturn === 'success' ? 'Payment received. Your order is ready for Cambinos fulfillment.' : checkoutReturn === 'cancelled' ? 'Checkout was cancelled. Your saved cart is still here.' : fulfillmentLive ? 'Protected checkout and fulfillment are live.' : 'Secure checkout is live. Shipping details are protected in Stripe.'
+      ? checkoutReturn === 'success' ? 'You’ve returned from checkout. Check your payment confirmation before ordering again. Contact support if you are unsure.' : checkoutReturn === 'cancelled' ? 'Checkout was cancelled. Your saved cart is still here.' : fulfillmentLive ? 'Protected checkout and fulfillment are live.' : 'Secure checkout is live. Shipping details are protected in Stripe.'
       : 'Official inventory is open for browsing. Protected checkout is being connected.';
     renderFilters();
     renderSetOptions();
@@ -433,7 +431,6 @@ launchForm.addEventListener('submit', joinAppLaunchList);
 if (STORE_PAUSED) {
   checkoutLive = false;
   cart = [];
-  localStorage.removeItem(CART_KEY);
   cartButton.disabled = true;
 } else {
   search.addEventListener('input', renderInventory);
