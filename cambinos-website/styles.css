@@ -94,7 +94,10 @@ img {
 }
 
 .brand-logo { width: 100%; height: 100%; object-fit: contain; }
-.brand-feature { position: relative; width: 100%; height: auto; display: block; border-radius: 22px; border: 1px solid #665125; margin-bottom: 28px; box-shadow: 0 24px 70px #0008; }
+.brand-artwork { width: 100%; padding: 24px 16px; text-align: center; color: #e8c875; }
+.brand-artwork img { width: 54%; max-width: 280px; height: auto; margin: 0 auto 18px; }
+.brand-artwork-name { display: block; font-family: Georgia, serif; font-size: clamp(24px, 4vw, 48px); font-weight: 400; line-height: 1.2; letter-spacing: 0.16em; padding-left: 0.16em; }
+.brand-artwork-tagline { display: block; margin-top: 12px; font-size: clamp(9px, 1.2vw, 13px); letter-spacing: 0.25em; }
 .hero-preview { flex-wrap: wrap; }
 .hero-layout { align-items: start; }
 .store-page .store-promise { display: flex; flex-direction: column; align-items: stretch; padding: 0; overflow: hidden; }
@@ -1675,7 +1678,7 @@ footer {
 [id] { scroll-margin-top: 100px; }
 .store-gold { color: var(--accent); }
 .store-hero-cta { margin-top: 24px; }
-.store-page .store-promise { border-radius: 22px; background: linear-gradient(145deg, #18160e, #0d1012); }
+.store-page .store-promise { border: 0; border-radius: 0; background: transparent; box-shadow: none; }
 .store-page .store-hero h1 { line-height: 1.06; letter-spacing: -0.045em; }
 .store-page .store-paused-panel { padding: clamp(24px, 4vw, 42px); }
 .store-page .store-paused-mark { width: 56px; height: 56px; margin-bottom: 16px; border-radius: 16px; }
