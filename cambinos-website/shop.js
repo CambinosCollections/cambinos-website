@@ -34,6 +34,8 @@ const launchSubmit = document.getElementById('storeLaunchSubmit');
 const launchMessage = document.getElementById('storeLaunchMessage');
 const launchSuccess = document.getElementById('storeLaunchSuccess');
 const CART_KEY = 'cambinos-official-store-cart-v1';
+const CHECKOUT_SNAPSHOT_KEY = 'cambinos-checkout-snapshot-v1';
+const RECEIPT_SESSION_KEY = 'cambinos-checkout-return-v1';
 const MINIMUM_CENTS = 1000;
 const ADD_ON_CENTS = 300;
 const CATALOGS = [
@@ -57,6 +59,7 @@ let activeCatalog = 'all';
 let checkoutLive = false;
 let cart = readCart();
 const checkoutReturn = new URLSearchParams(location.search).get('checkout');
+let receiptMessage = '';
 // A return URL is not proof of payment. Preserve the cart until an order is
 // confirmed by the server; Stripe webhooks remain the payment authority.
 
@@ -100,6 +103,8 @@ function listingSearchText(listing) {
   return [
     listing.title,
     listing.description,
+    listing.bundleName,
+    ...(listing.includedCards || []).map(card => [card.name, card.setName, card.itemNumber, card.edition].filter(Boolean).join(' ')),
     listing.product?.name,
     listing.product?.category,
     listing.product?.productType,
@@ -114,6 +119,11 @@ function listingSearchText(listing) {
 
 function listingCatalogKey(listing) {
   const text = listingSearchText(listing);
+  // Match the manufacturer field, not a character name such as Leafeon.
+  // An explicitly identified TCG still takes precedence over sports branding.
+  const tcg = CATALOG_MATCH_ORDER.filter(key => key !== 'sports').map(key => CATALOGS.find(catalog => catalog.key === key)).find(catalog => catalog?.match?.test(text));
+  if (tcg) return tcg.key;
+  if (/^(?:leaf(?: trading cards)?|wild[\s-]*card(?: trading cards)?)$/i.test(String(listing.product?.manufacturer || '').trim())) return 'sports';
   return CATALOG_MATCH_ORDER.map((key) => CATALOGS.find((catalog) => catalog.key === key)).find((catalog) => catalog?.match?.test(text))?.key || 'other';
 }
 
@@ -123,7 +133,7 @@ function catalogLabel(key) {
 
 function listingProductType(listing) {
   if (listing.product?.isSealed) return 'sealed';
-  if (['team_set', 'complete_set', 'master_set', 'binder'].includes(listing.listingKind)) return 'collection';
+  if (['team_set', 'complete_set', 'master_set', 'card_collection', 'binder'].includes(listing.listingKind)) return 'collection';
   return 'single';
 }
 
@@ -169,6 +179,12 @@ function productCard(listing) {
   const details = [listing.product?.setName, listing.product?.itemNumber ? `#${listing.product.itemNumber}` : null, listing.product?.edition].filter(Boolean).join(' · ');
   if (details) body.append(element('p', 'store-card-details', details));
   if (listing.description) body.append(element('p', 'store-card-description', listing.description));
+  if (listing.includedCards?.length) {
+    const contents = element('details', 'store-card-details');
+    contents.append(element('summary', '', `Included cards (${listing.includedCards.length}) · seller selected`));
+    listing.includedCards.forEach(item => contents.append(element('p', '', `${item.quantity} × ${[item.name, item.setName, item.itemNumber ? `#${item.itemNumber}` : '', item.edition].filter(Boolean).join(' · ')}`)));
+    body.append(contents);
+  }
 
   const footer = element('div', 'store-card-footer');
   const price = element('div', 'store-card-price');
@@ -285,11 +301,58 @@ async function startCheckout() {
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || !payload.success || !payload.data?.checkoutUrl) throw new Error(payload.error || 'Secure checkout could not be started.');
-    location.assign(payload.data.checkoutUrl);
+    const destination = new URL(payload.data.checkoutUrl);
+    if (destination.protocol !== 'https:' || destination.hostname !== 'checkout.stripe.com') throw new Error('Checkout returned an unexpected destination. Please contact support.');
+    try { sessionStorage.setItem(CHECKOUT_SNAPSHOT_KEY, JSON.stringify({ orderId: payload.data.orderId, items: cart })); } catch { /* Payment verification still works without storage. */ }
+    location.assign(destination.href);
   } catch (error) {
     renderCart();
     cartMessage.textContent = error instanceof Error ? error.message : 'Secure checkout could not be started.';
   }
+}
+
+async function verifyCheckoutReturn() {
+  const params = new URLSearchParams(location.search);
+  let sessionId = params.get('session_id');
+  try {
+    if (sessionId) sessionStorage.setItem(RECEIPT_SESSION_KEY, sessionId);
+    else sessionId = sessionStorage.getItem(RECEIPT_SESSION_KEY);
+  } catch { /* Private browsing can restrict session storage. */ }
+  if (!sessionId || !/^cs_[a-zA-Z0-9_]{4,240}$/.test(sessionId)) return;
+  // Remove the receipt capability from the address bar and copied links.
+  params.delete('session_id');
+  history.replaceState(null, '', location.pathname + (params.size ? '?' + params.toString() : '') + location.hash);
+  receiptMessage = 'Checking your payment securely. Please do not place this order again yet.';
+  status.lastElementChild.textContent = receiptMessage;
+  try {
+    const response = await fetch(`${API_ORIGIN}/api/storefront/checkout/receipt`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      cache: 'no-store', signal: AbortSignal.timeout(15000), body: JSON.stringify({ sessionId }),
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload.success) throw new Error('unverified');
+    if (payload.data?.status === 'paid') {
+      receiptMessage = 'Payment confirmed. Thank you! Cambinos has reserved your purchased cards for fulfillment.';
+      try {
+        const snapshot = JSON.parse(sessionStorage.getItem(CHECKOUT_SNAPSHOT_KEY) || 'null');
+        if (snapshot?.orderId === payload.data.orderId && Array.isArray(snapshot.items)) {
+          const purchased = new Map(snapshot.items.map(item => [item.listingId, item.quantity]));
+          cart = readCart().map(item => ({ ...item, quantity: Math.max(0, item.quantity - (purchased.get(item.listingId) || 0)) })).filter(item => item.quantity > 0);
+          localStorage.setItem(CART_KEY, JSON.stringify(cart));
+          sessionStorage.removeItem(CHECKOUT_SNAPSHOT_KEY);
+        }
+        sessionStorage.removeItem(RECEIPT_SESSION_KEY);
+      } catch { /* Never turn a confirmed payment into a failure because storage is unavailable. */ }
+    } else if (payload.data?.status === 'expired') {
+      receiptMessage = 'This checkout expired without payment. Your saved cart can be reviewed again.';
+      try { sessionStorage.removeItem(RECEIPT_SESSION_KEY); } catch { /* Optional storage. */ }
+    } else {
+      receiptMessage = 'Payment is still pending. Refresh this page to check again; do not pay twice.';
+    }
+  } catch {
+    receiptMessage = 'We could not verify payment yet. Check your Stripe confirmation or contact support before paying again.';
+  }
+  status.lastElementChild.textContent = receiptMessage;
 }
 
 function renderFilters() {
@@ -414,9 +477,9 @@ async function loadStore() {
     const fulfillmentLive = statusResponse.ok && statusPayload.data?.fulfillment === 'live';
     checkoutLive = live;
     status.className = `store-status ${live ? 'is-live' : 'is-preparing'}`;
-    status.lastElementChild.textContent = live
+    status.lastElementChild.textContent = receiptMessage || (live
       ? checkoutReturn === 'success' ? 'You’ve returned from checkout. Check your payment confirmation before ordering again. Contact support if you are unsure.' : checkoutReturn === 'cancelled' ? 'Checkout was cancelled. Your saved cart is still here.' : fulfillmentLive ? 'Protected checkout and fulfillment are live.' : 'Secure checkout is live. Shipping details are protected in Stripe.'
-      : 'Official inventory is open for browsing. Protected checkout is being connected.';
+      : 'Official inventory is open for browsing. Protected checkout is being connected.');
     renderFilters();
     renderSetOptions();
     renderInventory();
@@ -432,6 +495,7 @@ if (STORE_PAUSED) {
   checkoutLive = false;
   cart = [];
   cartButton.disabled = true;
+  void verifyCheckoutReturn();
 } else {
   search.addEventListener('input', renderInventory);
   setFilter.addEventListener('change', renderInventory);
@@ -443,5 +507,5 @@ if (STORE_PAUSED) {
   cartClose.addEventListener('click', () => cartDialog.close());
   checkoutButton.addEventListener('click', startCheckout);
   cartDialog.addEventListener('click', (event) => { if (event.target === cartDialog) cartDialog.close(); });
-  loadStore();
+  void verifyCheckoutReturn().then(loadStore);
 }
