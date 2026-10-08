@@ -190,7 +190,10 @@ function sharedSetAvailabilityPanel(listing, buy) {
       const payload = await response.json();
       if (!response.ok || !payload.success) throw new Error('Availability unavailable');
       const quote = payload.data;
-      content.replaceChildren(element('p', '', quote.complete
+      const hasAvailableCards = quote.lines.some(line => line.availableQuantity > 0);
+      content.replaceChildren(element('p', '', !hasAvailableCards
+        ? 'No cards currently available. All cards in this set are sold or reserved.'
+        : quote.complete
         ? 'All originally listed cards are available. This does not certify a complete catalog checklist.'
         : 'Some originally listed cards are sold or reserved. This is a partial set.'));
       quote.lines.forEach(line => {
@@ -205,16 +208,18 @@ function sharedSetAvailabilityPanel(listing, buy) {
           content.append(singleBuy);
         }
       });
-      if (quote.pricing) {
+      if (!hasAvailableCards) {
+        content.append(element('p', '', 'Refresh availability to check whether any reservations have been released.'));
+      } else if (quote.pricing) {
         content.append(element('p', '', `${money(quote.pricing.availablePriceCents / 100, quote.currency)} for remaining cards - same ${Number(quote.pricing.discountPercent.toFixed(2))}% set discount`));
       } else {
         content.append(element('p', '', 'Individual card prices have not been configured. No remaining-set price is estimated.'));
       }
       content.append(element('p', '', 'Availability is not a reservation. Inventory is checked again at checkout.'));
-      buy.disabled = !quote.pricing?.purchasable;
-      buy.textContent = quote.pricing?.purchasable ? 'Add available set' : 'No priced set available';
-      buy.onclick = () => addSetSelection(listing, quote);
-      content.append(element('p', '', 'Choose one single or the available set. A new choice replaces this set’s current cart selection.'));
+      buy.disabled = !hasAvailableCards || !quote.pricing?.purchasable;
+      buy.textContent = !hasAvailableCards ? 'Currently unavailable' : quote.pricing?.purchasable ? 'Add available set' : 'Set pricing unavailable';
+      buy.onclick = buy.disabled ? null : () => addSetSelection(listing, quote);
+      if (hasAvailableCards) content.append(element('p', '', 'Choose one single or the available set. A new choice replaces this set’s current cart selection.'));
     } catch {
       content.replaceChildren(element('p', '', 'Availability could not be verified. Refresh to try again.'));
     } finally {
