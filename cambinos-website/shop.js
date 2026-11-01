@@ -572,8 +572,19 @@ async function verifyCheckoutReturn() {
     const payload = await response.json();
     if (!response.ok || !payload.success) throw new Error('unverified');
     if (pendingCheckoutIntent && pendingCheckoutIntent.orderId === payload.data?.orderId && ['paid', 'expired'].includes(payload.data.status)) {
-      persistCheckoutIntent({ ...pendingCheckoutIntent, status: payload.data.status });
-      receiptMessage = payload.data.status === 'paid' ? 'Payment confirmed. Open your cart to finish recovery.' : 'Checkout expired without payment. Open your cart to review it.';
+      const expectedIntent = pendingCheckoutIntent.intentKey;
+      if (!navigator.locks?.request) throw new Error('Checkout recovery coordination is unavailable.');
+      await navigator.locks.request('cambinos-store-checkout', { mode: 'exclusive' }, () => {
+        const current = readCheckoutIntent();
+        if (current?.intentKey === expectedIntent && current.orderId === payload.data.orderId) {
+          persistCheckoutIntent({ ...current, status: payload.data.status });
+          receiptMessage = payload.data.status === 'paid' ? 'Payment confirmed. Open your cart to finish recovery.' : 'Checkout expired without payment. Open your cart to review it.';
+        } else {
+          pendingCheckoutIntent = current;
+          receiptBlocked = Boolean(current);
+          receiptMessage = 'This earlier checkout was already reviewed or changed in another tab. Your current cart was not changed.';
+        }
+      });
       status.lastElementChild.textContent = receiptMessage;
       return;
     }
