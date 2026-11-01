@@ -16,6 +16,8 @@ const typeFilter = document.getElementById('storeTypeFilter');
 const sortSelect = document.getElementById('storeSort');
 const clearFilters = document.getElementById('storeClearFilters');
 const resultsSummary = document.getElementById('storeResultsSummary');
+const pageMessage = document.getElementById('storePageMessage');
+const loadMoreButton = document.getElementById('storeLoadMore');
 const retry = document.getElementById('storeRetry');
 const cartDialog = document.getElementById('storeCart');
 const cartButton = document.getElementById('storeCartButton');
@@ -57,6 +59,9 @@ const CATALOGS = [
 ];
 const CATALOG_MATCH_ORDER = ['pokemon', 'magic', 'yu_gi_oh', 'lorcana', 'one_piece', 'digimon', 'gundam', 'riftbound', 'dragon_ball', 'invincible', 'sports'];
 let inventory = [];
+let inventoryCursor = null;
+let inventoryAsOf = null;
+let inventoryPageBusy = false;
 let activeCatalog = 'all';
 let checkoutLive = false;
 let checkoutBusy = false;
@@ -652,7 +657,7 @@ function renderSetOptions() {
   setFilter.replaceChildren(...options);
   setFilter.value = sets.includes(current) ? current : 'All';
   const selectedCatalog = catalogLabel(activeCatalog);
-  catalogSummary.textContent = activeCatalog === 'all' ? 'All available products' : `${selectedCatalog} inventory`;
+  catalogSummary.textContent = activeCatalog === 'all' ? 'Loaded products' : `${selectedCatalog} loaded inventory`;
 }
 
 function renderInventory() {
@@ -671,9 +676,9 @@ function renderInventory() {
   });
   grid.replaceChildren(...visible.map(productCard));
   empty.hidden = inventory.length > 0;
-  resultsSummary.textContent = `${visible.length} ${visible.length === 1 ? 'listing' : 'listings'} shown${activeCatalog === 'all' ? '' : ` in ${catalogLabel(activeCatalog)}`}`;
+  resultsSummary.textContent = `${visible.length} ${visible.length === 1 ? 'listing' : 'listings'} shown${activeCatalog === 'all' ? '' : ` in ${catalogLabel(activeCatalog)}`}${inventoryCursor ? ' among loaded inventory. Load more to search and sort older listings.' : ''}`;
   if (!visible.length && inventory.length) {
-    grid.append(element('p', 'store-no-results', `No ${activeCatalog === 'all' ? 'official inventory' : catalogLabel(activeCatalog) + ' inventory'} matches these filters yet. Try another catalog, set, or search.`));
+    grid.append(element('p', 'store-no-results', inventoryCursor ? 'No matches among loaded listings. More inventory is available below; load it before concluding there are no matches.' : `No ${activeCatalog === 'all' ? 'official inventory' : catalogLabel(activeCatalog) + ' inventory'} matches these filters. Try another catalog, set, or search.`));
   }
 }
 
@@ -723,9 +728,46 @@ async function joinAppLaunchList(event) {
   }
 }
 
+function validateInventoryPage(payload) {
+  const page = payload?.data;
+  if (payload?.success !== true || !page || !Array.isArray(page.listings) || typeof page.asOf !== 'string' ||
+      (page.nextCursor !== null && (typeof page.nextCursor !== 'string' || !page.nextCursor))) throw new Error('Inventory paging unavailable.');
+  return page;
+}
+function renderInventoryPageState(message) {
+  pageMessage.hidden = false;
+  pageMessage.textContent = message || (inventoryCursor ? `${inventory.length} listings loaded. Catalog counts, filters and sorting cover loaded inventory only.` : `${inventory.length} listings loaded. End of this browse session. Refresh for new or changed inventory.`);
+  loadMoreButton.hidden = !inventoryCursor;
+  loadMoreButton.disabled = inventoryPageBusy;
+  loadMoreButton.textContent = inventoryPageBusy ? 'Loading inventory…' : 'Load more inventory';
+}
+async function loadMoreInventory() {
+  if (!inventoryCursor || inventoryPageBusy || checkoutBusy) return;
+  const cursor = inventoryCursor, request = storeRequest;
+  inventoryPageBusy = true; renderInventoryPageState();
+  try {
+    const response = await fetch(`${API_ORIGIN}/api/storefront/listings/page?limit=100&cursor=${encodeURIComponent(cursor)}`, { cache: 'no-store', signal: AbortSignal.timeout(15000) });
+    const payload = await response.json();
+    if (request !== storeRequest || cursor !== inventoryCursor) return;
+    if (!response.ok) throw new Error('Inventory page unavailable.');
+    const page = validateInventoryPage(payload);
+    if (page.asOf !== inventoryAsOf || page.nextCursor === cursor) throw new Error('Inventory page changed.');
+    const ids = new Set(inventory.map(item => item.id));
+    inventory.push(...page.listings.filter(item => !ids.has(item.id)));
+    inventoryCursor = page.nextCursor;
+    renderFilters(); renderSetOptions(); renderInventory();
+    inventoryPageBusy = false; renderInventoryPageState();
+  } catch {
+    if (request !== storeRequest) return;
+    inventoryPageBusy = false;
+    renderInventoryPageState('More inventory could not be loaded. Your current listings and filters are retained; retry Load more inventory.');
+  }
+}
 async function loadStore() {
   if (checkoutBusy) return;
   const request = ++storeRequest;
+  inventoryCursor = null; inventoryAsOf = null; inventoryPageBusy = false;
+  loadMoreButton.hidden = true; pageMessage.hidden = true;
   checkoutLive = false;
   ++quoteRequest;
   checkoutButton.disabled = true;
@@ -736,14 +778,15 @@ async function loadStore() {
   status.lastElementChild.textContent = 'Connecting to official Cambinos inventory…';
   try {
     const [listingResponse, statusResponse] = await Promise.all([
-      fetch(`${API_ORIGIN}/api/storefront/listings?limit=500`),
+      fetch(`${API_ORIGIN}/api/storefront/listings/page?limit=100`, { cache: 'no-store', signal: AbortSignal.timeout(15000) }),
       fetch(`${API_ORIGIN}/api/storefront/status`),
     ]);
     const listingPayload = await listingResponse.json();
     const statusPayload = await statusResponse.json();
     if (request !== storeRequest) return;
     if (!listingResponse.ok || !listingPayload.success) throw new Error('Inventory unavailable');
-    inventory = Array.isArray(listingPayload.data) ? listingPayload.data : [];
+    const page = validateInventoryPage(listingPayload);
+    inventory = page.listings; inventoryCursor = page.nextCursor; inventoryAsOf = page.asOf;
     const live = statusResponse.ok && statusPayload.success === true && statusPayload.data?.checkout === 'live';
     const fulfillmentLive = statusResponse.ok && statusPayload.data?.fulfillment === 'live';
     checkoutLive = live;
@@ -754,6 +797,7 @@ async function loadStore() {
     renderFilters();
     renderSetOptions();
     renderInventory();
+    renderInventoryPageState();
     renderCart();
   } catch (_error) {
     if (request !== storeRequest) return;
@@ -781,6 +825,7 @@ if (STORE_PAUSED) {
   sortSelect.addEventListener('change', renderInventory);
   clearFilters.addEventListener('click', resetStoreFilters);
   retry.addEventListener('click', loadStore);
+  loadMoreButton.addEventListener('click', loadMoreInventory);
 
   cartDialog.addEventListener('click', (event) => { if (event.target === cartDialog) cartDialog.close(); });
   void verifyCheckoutReturn().then(loadStore);
