@@ -59,6 +59,8 @@ const CATALOGS = [
 ];
 const CATALOG_MATCH_ORDER = ['pokemon', 'magic', 'yu_gi_oh', 'lorcana', 'one_piece', 'digimon', 'gundam', 'riftbound', 'dragon_ball', 'invincible', 'sports'];
 let inventory = [];
+// Authoritative cart quote records are independent of browse-page coverage.
+const cartListings = new Map();
 let inventoryCursor = null;
 let inventoryAsOf = null;
 let inventoryPageBusy = false;
@@ -161,7 +163,7 @@ function cartEntry(listingId) {
 
 function setCartQuantity(listingId, quantity) {
   if (checkoutBusy || readCheckoutIntent()) return;
-  const listing = inventory.find((item) => item.id === listingId);
+  const listing = cartListings.get(listingId) || inventory.find((item) => item.id === listingId);
   const maximum = SHARED_SET_KINDS.includes(listing?.listingKind) ? 1 : Math.max(1, Number(listing?.quantity) || 1);
   const next = Math.max(0, Math.min(maximum, Math.floor(quantity)));
   cart = cart.filter((item) => item.listingId !== listingId);
@@ -355,7 +357,7 @@ async function verifyCart() {
       body: JSON.stringify({ items: cart }),
     });
     const payload = await response.json();
-    if (request !== quoteRequest || checkoutBusy || checkedCart !== JSON.stringify(cart)) return;
+    if (request !== quoteRequest || checkoutBusy || checkedCart !== JSON.stringify(cart) || readCheckoutIntent()) return;
     if (!response.ok || !payload.success) throw new Error(payload.error || 'Cart could not be verified.');
     if (Array.isArray(payload.data?.items)) {
       const verifiedIds = new Set(payload.data.items.map((item) => item.listing.id));
@@ -371,22 +373,22 @@ async function verifyCart() {
     let repriced = false;
     for (const line of payload.data.items || []) {
       const entry = cart.find(item => item.listingId === line.listing.id);
-      const original = inventory.find(item => item.id === line.listing.id);
-      if (!entry || !original || !Number.isSafeInteger(line.unitCents) || line.unitCents <= 0 || line.listing.currency !== 'USD') throw new Error('Current cart price could not be confirmed.');
+      const original = cartListings.get(line.listing.id) || inventory.find(item => item.id === line.listing.id);
+      if (!entry || !Number.isSafeInteger(line.unitCents) || line.unitCents <= 0 || line.listing.currency !== 'USD') throw new Error('Current cart price could not be confirmed.');
       const shown = entry.quoteVersion && entry.display ? entry.display : original;
-      if (Math.round(Number(shown.price) * 100) !== line.unitCents || shown.currency !== line.listing.currency) {
+      if (!shown || Math.round(Number(shown.price) * 100) !== line.unitCents || shown.currency !== line.listing.currency) {
         if (entry.quoteVersion) entry.display = { ...entry.display, price: line.unitCents / 100, currency: line.listing.currency };
-        else Object.assign(original, { price: line.unitCents / 100, currency: line.listing.currency });
+        else if (original) Object.assign(original, { price: line.unitCents / 100, currency: line.listing.currency });
         repriced = true;
       }
+      cartListings.set(line.listing.id, { ...line.listing, price: line.unitCents / 100 });
     }
     if (repriced) {
       priceReviewRequired = true;
       renderInventory();
       localStorage.setItem(CART_KEY, JSON.stringify(cart));
-      renderCart();
-      return;
     }
+    renderCart(false);
     acceptedQuoteVersion = payload.data.quoteVersion;
     acceptedSubtotalCents = Number.isSafeInteger(payload.data.subtotalCents) ? payload.data.subtotalCents : null;
     checkoutButton.disabled = receiptBlocked || !checkoutLive || payload.data?.checkoutEligible !== true;
@@ -406,7 +408,7 @@ async function verifyCart() {
   }
 }
 
-function renderCart() {
+function renderCart(verify = true) {
   pendingCheckoutIntent = readCheckoutIntent();
   if (pendingCheckoutIntent) {
     ++quoteRequest;
@@ -423,27 +425,37 @@ function renderCart() {
     return;
   }
   minimumPanel.hidden = false;
-  acceptedQuoteVersion = null;
-  ++quoteRequest;
+  if (verify) { acceptedQuoteVersion = null; ++quoteRequest; }
   checkoutButton.disabled = true;
   const valid = cart.map((entry) => {
-    const original = inventory.find(item => item.id === entry.listingId);
+    const original = cartListings.get(entry.listingId) || inventory.find(item => item.id === entry.listingId);
     return { entry, listing: original && entry.quoteVersion && entry.display
       ? { ...original, title: entry.display.title, price: entry.display.price, currency: entry.display.currency } : original };
   }).filter(item => item.listing);
-  const totalItems = valid.reduce((sum, item) => sum + item.entry.quantity, 0);
+  const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
   const subtotalCents = valid.reduce((sum, item) => sum + priceCents(item.listing) * item.entry.quantity, 0);
   cartCount.textContent = String(totalItems);
   cartCount.setAttribute('aria-label', `${totalItems} ${totalItems === 1 ? 'item' : 'items'}`);
   cartItems.replaceChildren(...valid.map(({ entry, listing }) => cartLine(listing, entry.quantity)));
-  cartEmpty.hidden = valid.length > 0;
-  cartSummary.hidden = valid.length === 0;
+  for (const entry of cart.filter(entry => !valid.some(item => item.entry.listingId === entry.listingId))) {
+    const pending = element('article', 'store-cart-line', entry.quantity + ' saved item(s) awaiting current details.');
+    const remove = element('button', 'button button-secondary', 'Remove saved item'); remove.type = 'button'; remove.disabled = checkoutBusy;
+    remove.addEventListener('click', () => setCartQuantity(entry.listingId, 0)); pending.append(remove); cartItems.append(pending);
+  }
+  cartEmpty.hidden = cart.length > 0;
+  cartSummary.hidden = cart.length === 0;
   if (checkoutBusy) {
     checkoutButton.textContent = 'Opening secure checkout…';
     cartMessage.textContent = 'Verifying inventory and creating your protected Stripe checkout.';
     return;
   }
-  if (!valid.length) return;
+  if (!cart.length) return;
+  if (valid.length !== cart.length) {
+    cartSubtotal.textContent = 'Awaiting current prices'; minimumText.textContent = 'Checking saved items'; minimumProgress.style.width = '0%';
+    checkoutButton.textContent = 'Verify saved cart'; cartMessage.textContent = 'Loading current details for saved items, independently of browse pages.';
+    if (verify) void verifyCart();
+    return;
+  }
   cartSubtotal.textContent = money(subtotalCents / 100);
   const remaining = Math.max(0, MINIMUM_CENTS - subtotalCents);
   minimumProgress.style.width = `${Math.min(100, (subtotalCents / MINIMUM_CENTS) * 100)}%`;
@@ -451,7 +463,7 @@ function renderCart() {
   checkoutButton.disabled = true;
   checkoutButton.textContent = subtotalCents < MINIMUM_CENTS ? `Add ${money(remaining / 100)} more` : checkoutLive ? 'Continue to secure checkout' : 'Checkout is being activated';
   cartMessage.textContent = subtotalCents < MINIMUM_CENTS ? 'Low-cost singles can be combined with any other store inventory.' : 'Checking current inventory and pricing…';
-  void verifyCart();
+  if (verify) void verifyCart();
 }
 
 function readCheckoutIntent() {
