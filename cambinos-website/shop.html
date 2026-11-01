@@ -77,6 +77,12 @@
           </div>
         </div>
 
+        <section class="store-status" id="receiptShipment" aria-label="Your order shipment" hidden>
+          <div><h3>Your shipment</h3><p id="receiptShipmentMessage" role="status" aria-live="polite"></p>
+          <p>This private view is available during this receipt visit. It does not create or save a new access link. If you cannot reopen your original checkout receipt later, contact support.</p>
+          <button class="button button-secondary" id="receiptShipmentRefresh" type="button">Check shipment</button>
+          <button class="button button-secondary" id="receiptShipmentHide" type="button">Hide shipment details</button></div>
+        </section>
         <div class="store-status" id="storeStatus" role="status" aria-live="polite" hidden>
           <span class="store-status-dot"></span>
           <span>Connecting to official Cambinos inventory…</span>
@@ -226,6 +232,7 @@
       </div>
     </div>
   </footer>
+  <script src="receipt-shipment.js?v=20261101" defer></script>
   <script src="shop.js?v=20260911-store-pause" defer></script>
 </body>
 </html>

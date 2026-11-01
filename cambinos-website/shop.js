@@ -588,6 +588,7 @@ async function verifyCheckoutReturn() {
     });
     const payload = await response.json();
     if (!response.ok || !payload.success) throw new Error('unverified');
+    if (payload.data?.status === 'paid' && typeof showReceiptShipment === 'function') showReceiptShipment(sessionId);
     if (pendingCheckoutIntent && pendingCheckoutIntent.orderId === payload.data?.orderId && ['paid', 'expired'].includes(payload.data.status)) {
       const expectedIntent = pendingCheckoutIntent.intentKey;
       if (!navigator.locks?.request) throw new Error('Checkout recovery coordination is unavailable.');
