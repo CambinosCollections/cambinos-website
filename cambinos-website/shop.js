@@ -26,6 +26,7 @@ const cartEmpty = document.getElementById('storeCartEmpty');
 const cartSummary = document.getElementById('storeCartSummary');
 const cartSubtotal = document.getElementById('storeCartSubtotal');
 const minimumText = document.getElementById('storeMinimumText');
+const minimumPanel = document.getElementById('storeMinimum');
 const minimumProgress = document.getElementById('storeMinimumProgress');
 const cartMessage = document.getElementById('storeCartMessage');
 const checkoutButton = document.getElementById('storeCheckoutButton');
@@ -63,11 +64,14 @@ let checkoutFailure = '';
 let quoteRequest = 0;
 let storeRequest = 0;
 let acceptedQuoteVersion = null;
+let acceptedSubtotalCents = null;
 let priceReviewRequired = false;
 let cart = readCart();
 const checkoutReturn = new URLSearchParams(location.search).get('checkout');
 let receiptMessage = '';
 let receiptBlocked = false;
+const CHECKOUT_INTENT_KEY = 'cambinos.store.checkout-intent.v1';
+let pendingCheckoutIntent = readCheckoutIntent();
 // A return URL is not proof of payment. Preserve the cart until an order is
 // confirmed by the server; Stripe webhooks remain the payment authority.
 
@@ -151,7 +155,7 @@ function cartEntry(listingId) {
 }
 
 function setCartQuantity(listingId, quantity) {
-  if (checkoutBusy) return;
+  if (checkoutBusy || readCheckoutIntent()) return;
   const listing = inventory.find((item) => item.id === listingId);
   const maximum = SHARED_SET_KINDS.includes(listing?.listingKind) ? 1 : Math.max(1, Number(listing?.quantity) || 1);
   const next = Math.max(0, Math.min(maximum, Math.floor(quantity)));
@@ -167,7 +171,7 @@ function addToCart(listing) {
 }
 
 function addSetSelection(listing, quote, cardIndex) {
-  if (checkoutBusy) return;
+  if (checkoutBusy || readCheckoutIntent()) return;
   const single = cardIndex === undefined ? null : quote.lines[cardIndex];
   const amount = single ? single.unitPriceCents : quote.pricing?.availablePriceCents;
   if (!Number.isSafeInteger(amount) || amount <= 0 || (single && single.availableQuantity < 1)) return;
@@ -336,7 +340,7 @@ function cartLine(listing, quantity) {
 }
 
 async function verifyCart() {
-  if (!cart.length || checkoutBusy) return;
+  if (!cart.length || checkoutBusy || pendingCheckoutIntent) return;
   const request = ++quoteRequest;
   const checkedCart = JSON.stringify(cart);
   try {
@@ -379,6 +383,7 @@ async function verifyCart() {
       return;
     }
     acceptedQuoteVersion = payload.data.quoteVersion;
+    acceptedSubtotalCents = Number.isSafeInteger(payload.data.subtotalCents) ? payload.data.subtotalCents : null;
     checkoutButton.disabled = receiptBlocked || !checkoutLive || payload.data?.checkoutEligible !== true;
     checkoutButton.textContent = priceReviewRequired ? 'Accept updated prices' : checkoutLive ? 'Continue to secure checkout' : 'Checkout is being activated';
     cartMessage.textContent = payload.data?.issues?.length
@@ -397,6 +402,22 @@ async function verifyCart() {
 }
 
 function renderCart() {
+  pendingCheckoutIntent = readCheckoutIntent();
+  if (pendingCheckoutIntent) {
+    ++quoteRequest;
+    const savedCount = (pendingCheckoutIntent.items || []).reduce((sum, item) => sum + (Number.isSafeInteger(item.quantity) ? item.quantity : 0), 0);
+    cartCount.textContent = savedCount ? String(savedCount) : '!';
+    cartCount.setAttribute('aria-label', 'Saved checkout requires review');
+    minimumPanel.hidden = true;
+    cartItems.replaceChildren(element('p', '', savedCount ? savedCount + ' item(s) in this saved checkout.' : 'Saved checkout needs support review.'));
+    cartEmpty.hidden = true; cartSummary.hidden = false;
+    cartSubtotal.textContent = pendingCheckoutIntent.subtotalCents ? money(pendingCheckoutIntent.subtotalCents / 100) : 'Saved checkout';
+    cartMessage.textContent = pendingCheckoutIntent.status === 'paid' ? 'Payment confirmed. Clear this completed checkout to start a new cart.' : ['expired', 'not_started'].includes(pendingCheckoutIntent.status) ? pendingCheckoutIntent.status === 'not_started' ? 'No checkout was created. Review current prices and availability before trying again.' : 'Verified checkout expired without payment. Review your saved cart before trying again.' : 'An earlier checkout needs verification. Resume it instead of placing another order.';
+    checkoutButton.textContent = pendingCheckoutIntent.status === 'paid' ? 'Clear paid cart and start a new cart' : ['expired', 'not_started'].includes(pendingCheckoutIntent.status) ? 'Review saved cart' : 'Resume checkout';
+    checkoutButton.disabled = checkoutBusy || pendingCheckoutIntent.invalid === true;
+    return;
+  }
+  minimumPanel.hidden = false;
   acceptedQuoteVersion = null;
   ++quoteRequest;
   checkoutButton.disabled = true;
@@ -428,54 +449,96 @@ function renderCart() {
   void verifyCart();
 }
 
+function readCheckoutIntent() {
+  try {
+    const raw = localStorage.getItem(CHECKOUT_INTENT_KEY);
+    if (!raw) return null;
+    const value = JSON.parse(raw);
+    if (!value || !/^[a-f0-9]{64}$/.test(value.intentKey) || !/^[a-f0-9]{64}$/.test(value.quoteVersion) || !Array.isArray(value.items) || !value.items.length) return { invalid: true };
+    return value;
+  } catch { return { invalid: true }; }
+}
+function persistCheckoutIntent(value) {
+  const serialized = JSON.stringify(value);
+  localStorage.setItem(CHECKOUT_INTENT_KEY, serialized);
+  if (localStorage.getItem(CHECKOUT_INTENT_KEY) !== serialized) throw new Error('Checkout recovery could not be saved. No new checkout will be submitted.');
+  pendingCheckoutIntent = value;
+}
+function finishRecoveredCheckout() {
+  const current = readCheckoutIntent();
+  if (!current || current.intentKey !== pendingCheckoutIntent.intentKey || !['paid', 'expired', 'not_started'].includes(current.status)) throw new Error('Checkout recovery changed. Refresh before continuing.');
+  if (current.status === 'paid') {
+    localStorage.setItem(CART_KEY, '[]'); cart = [];
+  }
+  localStorage.removeItem(CHECKOUT_INTENT_KEY);
+  if (localStorage.getItem(CHECKOUT_INTENT_KEY)) throw new Error('Checkout recovery could not be cleared. Refresh before continuing.');
+  pendingCheckoutIntent = null; receiptBlocked = false; receiptMessage = ''; checkoutFailure = '';
+  renderCart();
+}
+
 async function startCheckout() {
-  if (!cart.length || checkoutButton.disabled || checkoutBusy || receiptBlocked || !acceptedQuoteVersion) return;
-  if (priceReviewRequired) {
+  if (!navigator.locks?.request) { cartMessage.textContent = 'Safe checkout coordination is unavailable in this browser. Use a supported browser before paying.'; return; }
+  return navigator.locks.request('cambinos-store-checkout', { mode: 'exclusive' }, runCheckoutIntent);
+}
+
+async function runCheckoutIntent() {
+  if (checkoutBusy) return;
+  pendingCheckoutIntent = readCheckoutIntent();
+  if (pendingCheckoutIntent?.invalid) { cartMessage.textContent = 'Saved checkout recovery is unavailable. Contact support before paying again.'; return; }
+  const finishingRecovery = pendingCheckoutIntent && ['paid', 'expired', 'not_started'].includes(pendingCheckoutIntent.status);
+  if (!pendingCheckoutIntent && (!cart.length || checkoutButton.disabled || receiptBlocked || !acceptedQuoteVersion)) return;
+  if (!pendingCheckoutIntent && priceReviewRequired) {
     priceReviewRequired = false;
     checkoutButton.textContent = 'Continue to secure checkout';
     cartMessage.textContent = 'Updated prices accepted. Continue to secure checkout when ready.';
     return;
   }
-  const submittedQuoteVersion = acceptedQuoteVersion;
-  checkoutFailure = '';
-  checkoutBusy = true;
-  ++quoteRequest;
-  const submittedItems = JSON.parse(JSON.stringify(cart));
-  renderCart();
-  checkoutButton.disabled = true;
-  checkoutButton.textContent = 'Opening secure checkout…';
-  cartMessage.textContent = 'Verifying inventory and creating your protected Stripe checkout…';
   try {
-    const response = await fetch(`${API_ORIGIN}/api/storefront/cart/checkout`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items: submittedItems, quoteVersion: submittedQuoteVersion }),
+    if (!pendingCheckoutIntent) {
+      const bytes = crypto.getRandomValues(new Uint8Array(32));
+      const intentKey = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+      persistCheckoutIntent({ intentKey, quoteVersion: acceptedQuoteVersion, items: JSON.parse(JSON.stringify(cart)), subtotalCents: acceptedSubtotalCents, status: 'pending' });
+    }
+    const submitted = pendingCheckoutIntent;
+    checkoutBusy = true; checkoutFailure = ''; ++quoteRequest; renderCart();
+    checkoutButton.textContent = 'Verifying saved checkout…';
+    const response = await fetch(API_ORIGIN + '/api/storefront/cart/checkout', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: submitted.items, quoteVersion: submitted.quoteVersion, intentKey: submitted.intentKey }),
+      signal: AbortSignal.timeout(20000),
     });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok || !payload.success || !payload.data?.checkoutUrl) throw new Error(payload.error || 'Secure checkout could not be started.');
-    const destination = new URL(payload.data.checkoutUrl);
-    if (destination.protocol !== 'https:' || destination.hostname !== 'checkout.stripe.com') throw new Error('Checkout returned an unexpected destination. Please contact support.');
-    try { sessionStorage.setItem(CHECKOUT_SNAPSHOT_KEY, JSON.stringify({ orderId: payload.data.orderId, items: submittedItems })); } catch { /* Payment verification still works without storage. */ }
+    if (!response.ok || !payload.success || !payload.data?.orderId) throw new Error(payload.error || 'Checkout could not be verified. Resume this checkout; do not place another order.');
+    const state = payload.data;
+    if (!['open', 'paid', 'expired', 'not_started'].includes(state.status)) throw new Error('Checkout remains uncertain. Resume or contact support before paying again.');
+    persistCheckoutIntent({ ...submitted, orderId: state.orderId, status: state.status });
+    if (state.status !== 'open') { checkoutBusy = false; if (finishingRecovery) finishRecoveredCheckout(); else renderCart(); return; }
+    const destination = new URL(state.checkoutUrl);
+    if (destination.protocol !== 'https:' || destination.hostname !== 'checkout.stripe.com' || destination.username || destination.password || destination.port) throw new Error('Checkout returned an unexpected destination. Contact support.');
+    try { sessionStorage.setItem(CHECKOUT_SNAPSHOT_KEY, JSON.stringify({ orderId: state.orderId, items: submitted.items })); } catch { /* Durable intent remains saved. */ }
     location.assign(destination.href);
   } catch (error) {
     checkoutBusy = false;
-    checkoutFailure = error instanceof Error ? error.message : 'Secure checkout could not be started.';
-    renderCart();
-    cartMessage.textContent = checkoutFailure;
+    checkoutFailure = error instanceof Error ? error.message : 'Checkout could not be verified. Resume before starting another order.';
+    renderCart(); cartMessage.textContent = checkoutFailure;
   }
 }
 
 async function verifyCheckoutReturn() {
   const params = new URLSearchParams(location.search);
   let sessionId = params.get('session_id');
+  let receiptSaved = false;
   try {
     if (sessionId) sessionStorage.setItem(RECEIPT_SESSION_KEY, sessionId);
     else sessionId = sessionStorage.getItem(RECEIPT_SESSION_KEY);
+    receiptSaved = Boolean(sessionId && sessionStorage.getItem(RECEIPT_SESSION_KEY) === sessionId);
   } catch { /* Private browsing can restrict session storage. */ }
   if (!sessionId || !/^cs_[a-zA-Z0-9_]{4,240}$/.test(sessionId)) return;
   // Remove the receipt capability from the address bar and copied links.
-  params.delete('session_id');
-  history.replaceState(null, '', location.pathname + (params.size ? '?' + params.toString() : '') + location.hash);
+  if (receiptSaved) {
+    params.delete('session_id');
+    history.replaceState(null, '', location.pathname + (params.size ? '?' + params.toString() : '') + location.hash);
+  }
   receiptBlocked = true;
   checkoutButton.disabled = true;
   status.hidden = false;
@@ -488,6 +551,12 @@ async function verifyCheckoutReturn() {
     });
     const payload = await response.json();
     if (!response.ok || !payload.success) throw new Error('unverified');
+    if (pendingCheckoutIntent && pendingCheckoutIntent.orderId === payload.data?.orderId && ['paid', 'expired'].includes(payload.data.status)) {
+      persistCheckoutIntent({ ...pendingCheckoutIntent, status: payload.data.status });
+      receiptMessage = payload.data.status === 'paid' ? 'Payment confirmed. Open your cart to finish recovery.' : 'Checkout expired without payment. Open your cart to review it.';
+      status.lastElementChild.textContent = receiptMessage;
+      return;
+    }
     if (payload.data?.status === 'paid') {
       receiptMessage = 'Payment confirmed. Thank you! Cambinos has reserved your purchased cards for fulfillment.';
       try {
@@ -513,6 +582,7 @@ async function verifyCheckoutReturn() {
   } catch {
     receiptMessage = 'We could not verify payment yet. Check your Stripe confirmation or contact support before paying again.';
   }
+  if (!receiptSaved) receiptMessage += ' Browser storage is unavailable: keep this private checkout address until payment is verified.';
   status.lastElementChild.textContent = receiptMessage;
 }
 
@@ -662,10 +732,13 @@ async function loadStore() {
 }
 
 launchForm.addEventListener('submit', joinAppLaunchList);
+cartButton.addEventListener('click', () => { renderCart(); cartDialog.showModal(); });
+cartClose.addEventListener('click', () => cartDialog.close());
+checkoutButton.addEventListener('click', startCheckout);
 if (STORE_PAUSED) {
   checkoutLive = false;
   cart = [];
-  cartButton.disabled = true;
+  cartButton.disabled = !pendingCheckoutIntent;
   void verifyCheckoutReturn();
 } else {
   search.addEventListener('input', renderInventory);
@@ -674,9 +747,7 @@ if (STORE_PAUSED) {
   sortSelect.addEventListener('change', renderInventory);
   clearFilters.addEventListener('click', resetStoreFilters);
   retry.addEventListener('click', loadStore);
-  cartButton.addEventListener('click', () => cartDialog.showModal());
-  cartClose.addEventListener('click', () => cartDialog.close());
-  checkoutButton.addEventListener('click', startCheckout);
+
   cartDialog.addEventListener('click', (event) => { if (event.target === cartDialog) cartDialog.close(); });
   void verifyCheckoutReturn().then(loadStore);
 }
