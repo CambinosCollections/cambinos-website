@@ -101,7 +101,9 @@ function saveCart() {
 }
 
 function money(value, currency = 'USD') {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 2 }).format(Number(value) || 0);
+  if (value === null || value === undefined || typeof value === 'boolean' || String(value).trim() === '' || !Number.isFinite(Number(value)) || Number(value) < 0) return 'Price unavailable';
+  try { return new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 2 }).format(Number(value)); }
+  catch { return 'Price unavailable'; }
 }
 
 function label(value) {
@@ -115,6 +117,14 @@ function element(tag, className, text) {
   return node;
 }
 
+function listingSaleReady(listing) {
+  return listing?.currency === 'USD' && listing.price !== null && listing.price !== undefined && typeof listing.price !== 'boolean' && String(listing.price).trim() !== '' && Number(listing.price) > 0 && Number.isSafeInteger(Math.round(Number(listing.price) * 100)) && Number.isSafeInteger(listing.quantity) && listing.quantity > 0;
+}
+function compareListingPrices(left, right, descending) {
+  const a = listingSaleReady(left), b = listingSaleReady(right);
+  if (a !== b) return a ? -1 : 1;
+  return a ? (Number(left.price) - Number(right.price)) * (descending ? -1 : 1) : 0;
+}
 function priceCents(listing) {
   return Math.round((Number(listing?.price) || 0) * 100);
 }
@@ -172,6 +182,7 @@ function setCartQuantity(listingId, quantity) {
 }
 
 function addToCart(listing) {
+  if (!listingSaleReady(listing)) return;
   const current = cartEntry(listing.id)?.quantity || 0;
   setCartQuantity(listing.id, current + 1);
   cartDialog.showModal();
@@ -268,7 +279,7 @@ function productCard(listing) {
   }
   const badge = element('span', 'store-card-badge', listing.product?.isSealed ? 'Sealed' : label(listing.listingKind));
   visual.append(badge);
-  if (priceCents(listing) < ADD_ON_CENTS) visual.append(element('span', 'store-card-addon', 'Add-on card'));
+  if (listingSaleReady(listing) && priceCents(listing) < ADD_ON_CENTS) visual.append(element('span', 'store-card-addon', 'Add-on card'));
 
   const body = element('div', 'store-card-body');
   body.append(element('p', 'store-card-category', `${catalogLabel(listingCatalogKey(listing))} · ${listing.product?.category || 'Collectible'}`));
@@ -285,7 +296,7 @@ function productCard(listing) {
 
   const footer = element('div', 'store-card-footer');
   const price = element('div', 'store-card-price');
-  price.append(element('strong', '', money(listing.price, listing.currency)));
+  price.append(element('strong', '', listingSaleReady(listing) ? money(listing.price, listing.currency) : 'Price unavailable'));
   const included = listing.includedTotalItems;
   price.append(element('span', '', included ? `${included} items included · ${listing.quantity} in stock` : `${listing.quantity} in stock`));
   const actions = element('div', 'store-card-actions');
@@ -294,6 +305,7 @@ function productCard(listing) {
   detailsLink.setAttribute('aria-label', `View details for ${listing.title}`);
   const buy = element('button', 'button store-buy-button', cartEntry(listing.id) ? 'Add another' : 'Add to cart');
   buy.type = 'button';
+  if (!listingSaleReady(listing)) { buy.disabled = true; buy.textContent = 'Price or stock unavailable'; }
   if (!SHARED_SET_KINDS.includes(listing.listingKind)) buy.addEventListener('click', () => addToCart(listing));
   if (SHARED_SET_KINDS.includes(listing.listingKind)) {
     price.lastElementChild.textContent = 'Original bundle price - check current availability';
@@ -682,8 +694,8 @@ function renderInventory() {
     if (selectedType !== 'All' && listingProductType(listing) !== selectedType) return false;
     return !query || listingSearchText(listing).includes(query);
   }).sort((left, right) => {
-    if (sortSelect.value === 'price-low') return Number(left.price) - Number(right.price);
-    if (sortSelect.value === 'price-high') return Number(right.price) - Number(left.price);
+    if (sortSelect.value === 'price-low') return compareListingPrices(left, right, false);
+    if (sortSelect.value === 'price-high') return compareListingPrices(left, right, true);
     if (sortSelect.value === 'name') return left.title.localeCompare(right.title, undefined, { numeric: true, sensitivity: 'base' });
     return String(right.publishedAt || '').localeCompare(String(left.publishedAt || ''));
   });
