@@ -61,6 +61,7 @@ let checkoutLive = false;
 let checkoutBusy = false;
 let checkoutFailure = '';
 let quoteRequest = 0;
+let storeRequest = 0;
 let cart = readCart();
 const checkoutReturn = new URLSearchParams(location.search).get('checkout');
 let receiptMessage = '';
@@ -579,6 +580,11 @@ async function joinAppLaunchList(event) {
 }
 
 async function loadStore() {
+  if (checkoutBusy) return;
+  const request = ++storeRequest;
+  checkoutLive = false;
+  ++quoteRequest;
+  checkoutButton.disabled = true;
   grid.replaceChildren();
   empty.hidden = true;
   errorPanel.hidden = true;
@@ -591,9 +597,10 @@ async function loadStore() {
     ]);
     const listingPayload = await listingResponse.json();
     const statusPayload = await statusResponse.json();
+    if (request !== storeRequest) return;
     if (!listingResponse.ok || !listingPayload.success) throw new Error('Inventory unavailable');
     inventory = Array.isArray(listingPayload.data) ? listingPayload.data : [];
-    const live = statusResponse.ok && statusPayload.data?.checkout === 'live';
+    const live = statusResponse.ok && statusPayload.success === true && statusPayload.data?.checkout === 'live';
     const fulfillmentLive = statusResponse.ok && statusPayload.data?.fulfillment === 'live';
     checkoutLive = live;
     status.className = `store-status ${live ? 'is-live' : 'is-preparing'}`;
@@ -605,6 +612,10 @@ async function loadStore() {
     renderInventory();
     renderCart();
   } catch (_error) {
+    if (request !== storeRequest) return;
+    checkoutLive = false;
+    ++quoteRequest;
+    checkoutButton.disabled = true;
     status.lastElementChild.textContent = 'Official inventory connection needs attention.';
     errorPanel.hidden = false;
   }
