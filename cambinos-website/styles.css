@@ -1757,3 +1757,9 @@ footer {
   .store-cart-line-image { width: 54px; height: 66px; }
   .store-cart-line-total { grid-column: 2 / -1; }
 }
+.store-checklist-line { padding: 0.85rem 0; border-bottom: 1px solid rgba(215,179,69,.18); }
+.store-checklist-line label { display: grid; gap: .45rem; font-size: .85rem; }
+.store-card-quantity { width: 100%; max-width: 8rem; min-height: 44px; padding: .6rem; color: #f2eee4; background: #101315; border: 1px solid #806a28; border-radius: 8px; }
+.store-card-quantity:focus-visible { outline: 2px solid #e7c447; outline-offset: 3px; }
+.store-card-quantity:disabled { opacity: .5; }
+.store-selection-total { color: #e7c447; font-weight: 700; }

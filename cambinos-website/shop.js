@@ -89,7 +89,7 @@ function readCart() {
     return value
       .filter((item) => typeof item?.listingId === 'string' && Number.isInteger(item?.quantity) && item.quantity > 0)
       .map((item) => ({ listingId: item.listingId, quantity: Math.min(99, item.quantity),
-        ...(typeof item.quoteVersion === 'string' ? { quoteVersion: item.quoteVersion, cardIndex: item.cardIndex, display: item.display } : {}) }));
+        ...(typeof item.quoteVersion === 'string' ? { quoteVersion: item.quoteVersion, cardIndex: item.cardIndex, cards: item.cards, wholeSet: item.wholeSet, display: item.display } : {}) }));
   } catch (_error) {
     return [];
   }
@@ -188,23 +188,32 @@ function addToCart(listing) {
   cartDialog.showModal();
 }
 
-function addSetSelection(listing, quote, cardIndex) {
+function addSetSelection(listing, quote, cards) {
   if (checkoutBusy || readCheckoutIntent()) return;
-  const single = cardIndex === undefined ? null : quote.lines[cardIndex];
-  const amount = single ? single.unitPriceCents : quote.pricing?.availablePriceCents;
-  if (!Number.isSafeInteger(amount) || amount <= 0 || (single && single.availableQuantity < 1)) return;
+  const wholeSet = cards === undefined;
+  let amount = wholeSet ? quote.wholeSetPriceCents : 0;
+  if (wholeSet && !quote.complete) return;
+  if (!wholeSet) {
+    if (quote.purchaseMode !== 'choose_cards' || !Array.isArray(cards) || !cards.length) return;
+    const seen = new Set();
+    for (const selected of cards) {
+      const line = quote.lines.find(line => line.cardIndex === selected.cardIndex);
+      if (!line || seen.has(selected.cardIndex) || !Number.isSafeInteger(selected.quantity) || selected.quantity < 1 || selected.quantity > line.availableQuantity || !Number.isSafeInteger(line.unitPriceCents) || line.unitPriceCents < 1) return;
+      seen.add(selected.cardIndex); amount += line.unitPriceCents * selected.quantity;
+    }
+  }
+  if (!Number.isSafeInteger(amount) || amount <= 0) return;
   cart = cart.filter(item => item.listingId !== listing.id);
   cart.push({ listingId: listing.id, quantity: 1, quoteVersion: quote.quoteVersion,
-    ...(cardIndex === undefined ? {} : { cardIndex }),
-    display: { title: single ? single.name : listing.title + ' - remaining cards', price: amount / 100, currency: quote.currency },
+    ...(wholeSet ? { wholeSet: true } : { cards: [...cards].sort((a,b) => a.cardIndex - b.cardIndex) }),
+    display: { title: listing.title + (wholeSet ? ' - whole listed set' : ' - selected cards'), price: amount / 100, currency: quote.currency },
   });
-  saveCart();
-  cartDialog.showModal();
+  saveCart(); cartDialog.showModal();
 }
 
 function sharedSetAvailabilityPanel(listing, buy) {
   const panel = element('details', 'store-card-details');
-  panel.append(element('summary', '', 'Check available cards and remaining-set price'));
+  panel.append(element('summary', '', 'View team / series checklist and choose cards'));
   const content = element('div', 'store-set-availability');
   content.setAttribute('aria-live', 'polite');
   const refresh = element('button', 'store-details-link', 'Refresh availability');
@@ -212,56 +221,65 @@ function sharedSetAvailabilityPanel(listing, buy) {
   let loading = false;
   async function load() {
     if (loading || STORE_PAUSED) return;
-    loading = true;
-    refresh.disabled = true;
-    buy.disabled = true;
+    loading = true; refresh.disabled = true; buy.disabled = true; buy.onclick = null;
     content.replaceChildren(element('p', '', 'Checking shared inventory...'));
     try {
-      const response = await fetch(`${API_ORIGIN}/api/storefront/listings/${encodeURIComponent(listing.id)}/set-availability`, { cache: 'no-store' });
+      const response = await fetch(API_ORIGIN + '/api/storefront/listings/' + encodeURIComponent(listing.id) + '/set-availability', { cache: 'no-store' });
       const payload = await response.json();
-      if (!response.ok || !payload.success) throw new Error('Availability unavailable');
+      if (!response.ok || !payload.success || !Array.isArray(payload.data?.lines)) throw new Error('Availability unavailable');
+      if (panel.isConnected === false) return;
       const quote = payload.data;
-      const hasAvailableCards = quote.lines.some(line => line.availableQuantity > 0);
-      content.replaceChildren(element('p', '', !hasAvailableCards
-        ? 'No cards currently available. All cards in this set are sold or reserved.'
-        : quote.complete
-        ? 'All originally listed cards are available. This does not certify a complete catalog checklist.'
-        : 'Some originally listed cards are sold or reserved. This is a partial set.'));
-      quote.lines.forEach(line => {
-        const singlePrice = line.unitPriceCents === null ? '' : ` - ${money(line.unitPriceCents / 100, quote.currency)} each`;
-        content.append(element('p', '', `${line.name}: ${line.availableQuantity} of ${line.quantity} available${singlePrice}${line.unavailableQuantity ? ` - ${line.unavailableQuantity} unavailable` : ''}`));
-      });
-      quote.lines.forEach(line => {
-        if (line.availableQuantity > 0 && line.unitPriceCents !== null) {
-          const singleBuy = element('button', 'store-details-link', 'Add one ' + line.name);
-          singleBuy.type = 'button';
-          singleBuy.addEventListener('click', () => addSetSelection(listing, quote, line.cardIndex));
-          content.append(singleBuy);
+      const canChoose = quote.purchaseMode === 'choose_cards' && quote.pricing;
+      const selected = new Map();
+      const previous = cartEntry(listing.id);
+      if (previous?.quoteVersion === quote.quoteVersion && Array.isArray(previous.cards)) previous.cards.forEach(card => selected.set(card.cardIndex, card.quantity));
+      content.replaceChildren(element('p', '', quote.complete
+        ? 'All listed cards are available. Whole set means this exact seller checklist, not a certified complete catalog.'
+        : 'Incomplete availability: some listed cards are sold or reserved. The whole set cannot be purchased.'));
+      content.append(element('p', '', 'Exact inventory lines are separate. A specific photographed or numbered physical copy is not guaranteed. Review condition and printing; unknown details are not inferred.'));
+      const total = element('p', 'store-selection-total', '');
+      const add = element('button', 'button store-buy-button', 'Add selected cards'); add.type = 'button';
+      function update() {
+        let cents = 0, count = 0, valid = true;
+        for (const [index, quantity] of selected) {
+          const line = quote.lines.find(line => line.cardIndex === index);
+          if (!line || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > line.availableQuantity || !Number.isSafeInteger(line.unitPriceCents) || line.unitPriceCents < 1) { valid = false; continue; }
+          count += quantity; cents += line.unitPriceCents * quantity;
         }
-      });
-      if (!hasAvailableCards) {
-        content.append(element('p', '', 'Refresh availability to check whether any reservations have been released.'));
-      } else if (quote.pricing) {
-        content.append(element('p', '', `${money(quote.pricing.availablePriceCents / 100, quote.currency)} for remaining cards - same ${Number(quote.pricing.discountPercent.toFixed(2))}% set discount`));
-      } else {
-        content.append(element('p', '', 'Individual card prices have not been configured. No remaining-set price is estimated.'));
+        add.disabled = !valid || count === 0 || !Number.isSafeInteger(cents) || cents <= 0;
+        total.textContent = valid ? count + ' selected · ' + money(cents / 100, quote.currency) + ' at configured per-card prices. No bundle discount applied.' : 'Review selected quantities before adding.';
       }
-      content.append(element('p', '', 'Availability is not a reservation. Inventory is checked again at checkout.'));
-      buy.disabled = !hasAvailableCards || !quote.pricing?.purchasable;
-      buy.textContent = !hasAvailableCards ? 'Currently unavailable' : quote.pricing?.purchasable ? 'Add available set' : 'Set pricing unavailable';
-      buy.onclick = buy.disabled ? null : () => addSetSelection(listing, quote);
-      if (hasAvailableCards) content.append(element('p', '', 'Choose one single or the available set. A new choice replaces this set’s current cart selection.'));
+      quote.lines.forEach(line => {
+        const row = element('div', 'store-checklist-line');
+        const identity = [line.name, line.setName, line.itemNumber ? '#' + line.itemNumber : '', line.edition, line.language, line.condition, line.grade].filter(Boolean).join(' · ');
+        row.append(element('p', '', identity + ': ' + line.availableQuantity + ' of ' + line.quantity + ' available' + (line.unitPriceCents == null ? '' : ' · ' + money(line.unitPriceCents / 100, quote.currency) + ' each')));
+        if (line.unavailableReason) row.append(element('p', '', line.unavailableReason));
+        if (canChoose) {
+          const label = element('label', '', 'Quantity needed for ' + identity);
+          const input = element('input', 'store-card-quantity'); input.type = 'number'; input.min = '0'; input.max = String(Math.min(999, line.availableQuantity)); input.step = '1';
+          input.value = String(selected.get(line.cardIndex) || 0); input.disabled = line.availableQuantity < 1 || line.unitPriceCents == null;
+          input.setAttribute('aria-label', 'Quantity needed for checklist row ' + (line.cardIndex + 1) + ': ' + identity);
+          input.addEventListener('input', () => { const quantity = Number(input.value); if (quantity === 0) selected.delete(line.cardIndex); else selected.set(line.cardIndex, quantity); update(); });
+          label.append(input); row.append(label);
+        }
+        content.append(row);
+      });
+      if (canChoose) {
+        add.addEventListener('click', () => addSetSelection(listing, quote, [...selected].map(([cardIndex, quantity]) => ({ cardIndex, quantity }))));
+        update(); content.append(total, add, element('p', '', 'Adding this selection updates this set in your cart. Other cart items stay unchanged.'));
+      } else content.append(element('p', '', 'Fixed contents only. The seller has not enabled individually priced card selection.'));
+      const whole = quote.complete && Number.isSafeInteger(quote.wholeSetPriceCents) && quote.wholeSetPriceCents > 0;
+      buy.disabled = !whole;
+      buy.textContent = whole ? 'Buy whole listed set · ' + money(quote.wholeSetPriceCents / 100, quote.currency) : 'Whole set unavailable';
+      buy.onclick = whole ? () => addSetSelection(listing, quote) : null;
+      content.append(element('p', '', 'Availability is not a reservation. Contents, stock and prices are checked again at checkout. Shipping and tax are separate.'));
     } catch {
       content.replaceChildren(element('p', '', 'Availability could not be verified. Refresh to try again.'));
-    } finally {
-      loading = false;
-      refresh.disabled = false;
-    }
+    } finally { loading = false; refresh.disabled = false; }
   }
   refresh.addEventListener('click', load);
   panel.addEventListener('toggle', () => { if (panel.open) void load(); });
-  panel.append(content, refresh);
-  return panel;
+  panel.append(content, refresh); return panel;
 }
 
 function productCard(listing) {
@@ -339,6 +357,12 @@ function cartLine(listing, quantity) {
   const meta = element('p', '', money(listing.price, listing.currency));
   if (priceCents(listing) < ADD_ON_CENTS) meta.append(' · Add-on card');
   info.append(meta);
+  if (listing.includedCards?.length) {
+    const contents = element('details', 'store-card-details');
+    contents.append(element('summary', '', 'Review exact selected contents (' + listing.includedCards.length + ' lines)'));
+    listing.includedCards.forEach(card => contents.append(element('p', '', card.quantity + ' × ' + [card.name, card.setName, card.itemNumber ? '#' + card.itemNumber : '', card.edition, card.condition, card.language, card.grade].filter(Boolean).join(' · '))));
+    info.append(contents);
+  }
   const controls = element('div', 'store-cart-quantity');
   const minus = element('button', '', '−');
   minus.type = 'button';
@@ -625,7 +649,7 @@ async function verifyCheckoutReturn() {
         if (snapshot?.orderId === payload.data.orderId && Array.isArray(snapshot.items)) {
           receiptBlocked = false;
           const alreadyCompleted = localStorage.getItem('cambinos.store.completed-receipt.v1:' + payload.data.orderId) === 'paid';
-          const selectionKey = item => JSON.stringify([item.listingId, item.quoteVersion || null, item.cardIndex ?? null]);
+          const selectionKey = item => JSON.stringify([item.listingId, item.quoteVersion || null, item.cardIndex ?? null, item.wholeSet ?? null, item.cards ?? null]);
           const purchased = new Map(snapshot.items.map(item => [selectionKey(item), item.quantity]));
           if (!alreadyCompleted) {
             cart = readCart().map(item => ({ ...item, quantity: Math.max(0, item.quantity - (purchased.get(selectionKey(item)) || 0)) })).filter(item => item.quantity > 0);
