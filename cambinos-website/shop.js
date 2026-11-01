@@ -62,9 +62,12 @@ let checkoutBusy = false;
 let checkoutFailure = '';
 let quoteRequest = 0;
 let storeRequest = 0;
+let acceptedQuoteVersion = null;
+let priceReviewRequired = false;
 let cart = readCart();
 const checkoutReturn = new URLSearchParams(location.search).get('checkout');
 let receiptMessage = '';
+let receiptBlocked = false;
 // A return URL is not proof of payment. Preserve the cart until an order is
 // confirmed by the server; Stripe webhooks remain the payment authority.
 
@@ -355,13 +358,36 @@ async function verifyCart() {
         return;
       }
     }
-    checkoutButton.disabled = !checkoutLive || payload.data?.checkoutEligible !== true;
-    checkoutButton.textContent = checkoutLive ? 'Continue to secure checkout' : 'Checkout is being activated';
+    if (typeof payload.data?.quoteVersion !== 'string' || !/^[a-f0-9]{64}$/.test(payload.data.quoteVersion)) throw new Error('Current price confirmation is unavailable.');
+    let repriced = false;
+    for (const line of payload.data.items || []) {
+      const entry = cart.find(item => item.listingId === line.listing.id);
+      const original = inventory.find(item => item.id === line.listing.id);
+      if (!entry || !original || !Number.isSafeInteger(line.unitCents) || line.unitCents <= 0 || line.listing.currency !== 'USD') throw new Error('Current cart price could not be confirmed.');
+      const shown = entry.quoteVersion && entry.display ? entry.display : original;
+      if (Math.round(Number(shown.price) * 100) !== line.unitCents || shown.currency !== line.listing.currency) {
+        if (entry.quoteVersion) entry.display = { ...entry.display, price: line.unitCents / 100, currency: line.listing.currency };
+        else Object.assign(original, { price: line.unitCents / 100, currency: line.listing.currency });
+        repriced = true;
+      }
+    }
+    if (repriced) {
+      priceReviewRequired = true;
+      renderInventory();
+      localStorage.setItem(CART_KEY, JSON.stringify(cart));
+      renderCart();
+      return;
+    }
+    acceptedQuoteVersion = payload.data.quoteVersion;
+    checkoutButton.disabled = receiptBlocked || !checkoutLive || payload.data?.checkoutEligible !== true;
+    checkoutButton.textContent = priceReviewRequired ? 'Accept updated prices' : checkoutLive ? 'Continue to secure checkout' : 'Checkout is being activated';
     cartMessage.textContent = payload.data?.issues?.length
       ? payload.data.issues.map(issue => issue.message).join(' ')
       : payload.data?.checkoutEligible
       ? checkoutLive ? 'Inventory and pricing verified. Ready for secure checkout.' : 'Inventory and pricing verified. Secure payment connection is the remaining step.'
       : payload.data?.minimumMessage || 'Add more merchandise to reach the $10 minimum.';
+    if (receiptBlocked) cartMessage.textContent = receiptMessage;
+    if (priceReviewRequired && !receiptBlocked) cartMessage.textContent = 'Prices changed. Review the updated item prices and subtotal, then accept them before continuing.';
     if (checkoutFailure) cartMessage.textContent = checkoutFailure + ' ' + cartMessage.textContent;
   } catch (error) {
     if (request !== quoteRequest || checkoutBusy || checkedCart !== JSON.stringify(cart)) return;
@@ -371,6 +397,7 @@ async function verifyCart() {
 }
 
 function renderCart() {
+  acceptedQuoteVersion = null;
   ++quoteRequest;
   checkoutButton.disabled = true;
   const valid = cart.map((entry) => {
@@ -402,7 +429,14 @@ function renderCart() {
 }
 
 async function startCheckout() {
-  if (!cart.length || checkoutButton.disabled || checkoutBusy) return;
+  if (!cart.length || checkoutButton.disabled || checkoutBusy || receiptBlocked || !acceptedQuoteVersion) return;
+  if (priceReviewRequired) {
+    priceReviewRequired = false;
+    checkoutButton.textContent = 'Continue to secure checkout';
+    cartMessage.textContent = 'Updated prices accepted. Continue to secure checkout when ready.';
+    return;
+  }
+  const submittedQuoteVersion = acceptedQuoteVersion;
   checkoutFailure = '';
   checkoutBusy = true;
   ++quoteRequest;
@@ -415,7 +449,7 @@ async function startCheckout() {
     const response = await fetch(`${API_ORIGIN}/api/storefront/cart/checkout`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items: submittedItems }),
+      body: JSON.stringify({ items: submittedItems, quoteVersion: submittedQuoteVersion }),
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || !payload.success || !payload.data?.checkoutUrl) throw new Error(payload.error || 'Secure checkout could not be started.');
@@ -442,6 +476,9 @@ async function verifyCheckoutReturn() {
   // Remove the receipt capability from the address bar and copied links.
   params.delete('session_id');
   history.replaceState(null, '', location.pathname + (params.size ? '?' + params.toString() : '') + location.hash);
+  receiptBlocked = true;
+  checkoutButton.disabled = true;
+  status.hidden = false;
   receiptMessage = 'Checking your payment securely. Please do not place this order again yet.';
   status.lastElementChild.textContent = receiptMessage;
   try {
@@ -456,15 +493,18 @@ async function verifyCheckoutReturn() {
       try {
         const snapshot = JSON.parse(sessionStorage.getItem(CHECKOUT_SNAPSHOT_KEY) || 'null');
         if (snapshot?.orderId === payload.data.orderId && Array.isArray(snapshot.items)) {
+          receiptBlocked = false;
           const selectionKey = item => JSON.stringify([item.listingId, item.quoteVersion || null, item.cardIndex ?? null]);
           const purchased = new Map(snapshot.items.map(item => [selectionKey(item), item.quantity]));
           cart = readCart().map(item => ({ ...item, quantity: Math.max(0, item.quantity - (purchased.get(selectionKey(item)) || 0)) })).filter(item => item.quantity > 0);
           localStorage.setItem(CART_KEY, JSON.stringify(cart));
           sessionStorage.removeItem(CHECKOUT_SNAPSHOT_KEY);
         }
-        sessionStorage.removeItem(RECEIPT_SESSION_KEY);
+        if (!receiptBlocked) sessionStorage.removeItem(RECEIPT_SESSION_KEY);
+        else receiptMessage = 'Payment confirmed, but this saved cart could not be matched. Contact support before paying for these items again.';
       } catch { /* Never turn a confirmed payment into a failure because storage is unavailable. */ }
     } else if (payload.data?.status === 'expired') {
+      receiptBlocked = false;
       receiptMessage = 'This checkout expired without payment. Your saved cart can be reviewed again.';
       try { sessionStorage.removeItem(RECEIPT_SESSION_KEY); } catch { /* Optional storage. */ }
     } else {
