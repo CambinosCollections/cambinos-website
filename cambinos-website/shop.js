@@ -58,6 +58,9 @@ const CATALOG_MATCH_ORDER = ['pokemon', 'magic', 'yu_gi_oh', 'lorcana', 'one_pie
 let inventory = [];
 let activeCatalog = 'all';
 let checkoutLive = false;
+let checkoutBusy = false;
+let checkoutFailure = '';
+let quoteRequest = 0;
 let cart = readCart();
 const checkoutReturn = new URLSearchParams(location.search).get('checkout');
 let receiptMessage = '';
@@ -144,6 +147,7 @@ function cartEntry(listingId) {
 }
 
 function setCartQuantity(listingId, quantity) {
+  if (checkoutBusy) return;
   const listing = inventory.find((item) => item.id === listingId);
   const maximum = SHARED_SET_KINDS.includes(listing?.listingKind) ? 1 : Math.max(1, Number(listing?.quantity) || 1);
   const next = Math.max(0, Math.min(maximum, Math.floor(quantity)));
@@ -159,6 +163,7 @@ function addToCart(listing) {
 }
 
 function addSetSelection(listing, quote, cardIndex) {
+  if (checkoutBusy) return;
   const single = cardIndex === undefined ? null : quote.lines[cardIndex];
   const amount = single ? single.unitPriceCents : quote.pricing?.availablePriceCents;
   if (!Number.isSafeInteger(amount) || amount <= 0 || (single && single.availableQuantity < 1)) return;
@@ -310,13 +315,14 @@ function cartLine(listing, quantity) {
   const controls = element('div', 'store-cart-quantity');
   const minus = element('button', '', '−');
   minus.type = 'button';
+  minus.disabled = checkoutBusy;
   minus.setAttribute('aria-label', `Remove one ${listing.title}`);
   minus.addEventListener('click', () => setCartQuantity(listing.id, quantity - 1));
   const value = element('span', '', String(quantity));
   value.setAttribute('aria-label', `${quantity} in cart`);
   const plus = element('button', '', '+');
   plus.type = 'button';
-  plus.disabled = SHARED_SET_KINDS.includes(listing.listingKind) || quantity >= listing.quantity;
+  plus.disabled = checkoutBusy || SHARED_SET_KINDS.includes(listing.listingKind) || quantity >= listing.quantity;
   plus.setAttribute('aria-label', `Add one ${listing.title}`);
   plus.addEventListener('click', () => setCartQuantity(listing.id, quantity + 1));
   controls.append(minus, value, plus);
@@ -326,7 +332,8 @@ function cartLine(listing, quantity) {
 }
 
 async function verifyCart() {
-  if (!cart.length) return;
+  if (!cart.length || checkoutBusy) return;
+  const request = ++quoteRequest;
   const checkedCart = JSON.stringify(cart);
   try {
     const response = await fetch(`${API_ORIGIN}/api/storefront/cart/quote`, {
@@ -335,7 +342,7 @@ async function verifyCart() {
       body: JSON.stringify({ items: cart }),
     });
     const payload = await response.json();
-    if (checkedCart !== JSON.stringify(cart)) return;
+    if (request !== quoteRequest || checkoutBusy || checkedCart !== JSON.stringify(cart)) return;
     if (!response.ok || !payload.success) throw new Error(payload.error || 'Cart could not be verified.');
     if (Array.isArray(payload.data?.items)) {
       const verifiedIds = new Set(payload.data.items.map((item) => item.listing.id));
@@ -347,17 +354,24 @@ async function verifyCart() {
         return;
       }
     }
-    cartMessage.textContent = payload.data?.checkoutEligible
+    checkoutButton.disabled = !checkoutLive || payload.data?.checkoutEligible !== true;
+    checkoutButton.textContent = checkoutLive ? 'Continue to secure checkout' : 'Checkout is being activated';
+    cartMessage.textContent = payload.data?.issues?.length
+      ? payload.data.issues.map(issue => issue.message).join(' ')
+      : payload.data?.checkoutEligible
       ? checkoutLive ? 'Inventory and pricing verified. Ready for secure checkout.' : 'Inventory and pricing verified. Secure payment connection is the remaining step.'
       : payload.data?.minimumMessage || 'Add more merchandise to reach the $10 minimum.';
+    if (checkoutFailure) cartMessage.textContent = checkoutFailure + ' ' + cartMessage.textContent;
   } catch (error) {
-    if (checkedCart !== JSON.stringify(cart)) return;
+    if (request !== quoteRequest || checkoutBusy || checkedCart !== JSON.stringify(cart)) return;
     checkoutButton.disabled = true;
     cartMessage.textContent = (error instanceof Error ? error.message : 'Cart could not be verified.') + ' Refresh availability and select your cards again before checkout.';
   }
 }
 
 function renderCart() {
+  ++quoteRequest;
+  checkoutButton.disabled = true;
   const valid = cart.map((entry) => {
     const original = inventory.find(item => item.id === entry.listingId);
     return { entry, listing: original && entry.quoteVersion && entry.display
@@ -370,19 +384,29 @@ function renderCart() {
   cartItems.replaceChildren(...valid.map(({ entry, listing }) => cartLine(listing, entry.quantity)));
   cartEmpty.hidden = valid.length > 0;
   cartSummary.hidden = valid.length === 0;
+  if (checkoutBusy) {
+    checkoutButton.textContent = 'Opening secure checkout…';
+    cartMessage.textContent = 'Verifying inventory and creating your protected Stripe checkout.';
+    return;
+  }
   if (!valid.length) return;
   cartSubtotal.textContent = money(subtotalCents / 100);
   const remaining = Math.max(0, MINIMUM_CENTS - subtotalCents);
   minimumProgress.style.width = `${Math.min(100, (subtotalCents / MINIMUM_CENTS) * 100)}%`;
   minimumText.textContent = remaining > 0 ? `Add ${money(remaining / 100)} to reach checkout` : 'Order minimum reached';
-  checkoutButton.disabled = subtotalCents < MINIMUM_CENTS || !checkoutLive;
+  checkoutButton.disabled = true;
   checkoutButton.textContent = subtotalCents < MINIMUM_CENTS ? `Add ${money(remaining / 100)} more` : checkoutLive ? 'Continue to secure checkout' : 'Checkout is being activated';
   cartMessage.textContent = subtotalCents < MINIMUM_CENTS ? 'Low-cost singles can be combined with any other store inventory.' : 'Checking current inventory and pricing…';
   void verifyCart();
 }
 
 async function startCheckout() {
-  if (!cart.length || checkoutButton.disabled) return;
+  if (!cart.length || checkoutButton.disabled || checkoutBusy) return;
+  checkoutFailure = '';
+  checkoutBusy = true;
+  ++quoteRequest;
+  const submittedItems = JSON.parse(JSON.stringify(cart));
+  renderCart();
   checkoutButton.disabled = true;
   checkoutButton.textContent = 'Opening secure checkout…';
   cartMessage.textContent = 'Verifying inventory and creating your protected Stripe checkout…';
@@ -390,17 +414,19 @@ async function startCheckout() {
     const response = await fetch(`${API_ORIGIN}/api/storefront/cart/checkout`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items: cart }),
+      body: JSON.stringify({ items: submittedItems }),
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || !payload.success || !payload.data?.checkoutUrl) throw new Error(payload.error || 'Secure checkout could not be started.');
     const destination = new URL(payload.data.checkoutUrl);
     if (destination.protocol !== 'https:' || destination.hostname !== 'checkout.stripe.com') throw new Error('Checkout returned an unexpected destination. Please contact support.');
-    try { sessionStorage.setItem(CHECKOUT_SNAPSHOT_KEY, JSON.stringify({ orderId: payload.data.orderId, items: cart })); } catch { /* Payment verification still works without storage. */ }
+    try { sessionStorage.setItem(CHECKOUT_SNAPSHOT_KEY, JSON.stringify({ orderId: payload.data.orderId, items: submittedItems })); } catch { /* Payment verification still works without storage. */ }
     location.assign(destination.href);
   } catch (error) {
+    checkoutBusy = false;
+    checkoutFailure = error instanceof Error ? error.message : 'Secure checkout could not be started.';
     renderCart();
-    cartMessage.textContent = error instanceof Error ? error.message : 'Secure checkout could not be started.';
+    cartMessage.textContent = checkoutFailure;
   }
 }
 
