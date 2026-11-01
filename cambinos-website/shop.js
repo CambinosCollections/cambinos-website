@@ -467,7 +467,27 @@ function persistCheckoutIntent(value) {
 function finishRecoveredCheckout() {
   const current = readCheckoutIntent();
   if (!current || current.intentKey !== pendingCheckoutIntent.intentKey || !['paid', 'expired', 'not_started'].includes(current.status)) throw new Error('Checkout recovery changed. Refresh before continuing.');
+  // Retire this order's legacy receipt before releasing its durable guard.
+  // On cleanup failure keep the intent, preventing old quantities being replayed.
+  const snapshotRaw = sessionStorage.getItem(CHECKOUT_SNAPSHOT_KEY);
+  const snapshot = snapshotRaw ? JSON.parse(snapshotRaw) : null;
+  if (snapshot?.orderId === current.orderId) {
+    sessionStorage.removeItem(CHECKOUT_SNAPSHOT_KEY);
+    if (sessionStorage.getItem(CHECKOUT_SNAPSHOT_KEY)) throw new Error('Receipt cleanup failed. Keep this checkout for recovery.');
+  }
+  if (current.receiptSessionId && sessionStorage.getItem(RECEIPT_SESSION_KEY) === current.receiptSessionId) {
+    sessionStorage.removeItem(RECEIPT_SESSION_KEY);
+    if (sessionStorage.getItem(RECEIPT_SESSION_KEY) === current.receiptSessionId) throw new Error('Receipt cleanup failed. Keep this checkout for recovery.');
+  }
+  const returnParams = new URLSearchParams(location.search);
+  if (current.receiptSessionId && returnParams.get('session_id') === current.receiptSessionId) {
+    returnParams.delete('session_id');
+    history.replaceState(null, '', location.pathname + (returnParams.size ? '?' + returnParams.toString() : '') + location.hash);
+  }
   if (current.status === 'paid') {
+    const completedKey = 'cambinos.store.completed-receipt.v1:' + current.orderId;
+    localStorage.setItem(completedKey, 'paid');
+    if (localStorage.getItem(completedKey) !== 'paid') throw new Error('Receipt completion could not be saved. Keep this checkout for recovery.');
     localStorage.setItem(CART_KEY, '[]'); cart = [];
   }
   localStorage.removeItem(CHECKOUT_INTENT_KEY);
@@ -511,7 +531,7 @@ async function runCheckoutIntent() {
     if (!response.ok || !payload.success || !payload.data?.orderId) throw new Error(payload.error || 'Checkout could not be verified. Resume this checkout; do not place another order.');
     const state = payload.data;
     if (!['open', 'paid', 'expired', 'not_started'].includes(state.status)) throw new Error('Checkout remains uncertain. Resume or contact support before paying again.');
-    persistCheckoutIntent({ ...submitted, orderId: state.orderId, status: state.status });
+    persistCheckoutIntent({ ...submitted, orderId: state.orderId, status: state.status, receiptSessionId: state.sessionId ?? submitted.receiptSessionId });
     if (state.status !== 'open') { checkoutBusy = false; if (finishingRecovery) finishRecoveredCheckout(); else renderCart(); return; }
     const destination = new URL(state.checkoutUrl);
     if (destination.protocol !== 'https:' || destination.hostname !== 'checkout.stripe.com' || destination.username || destination.password || destination.port) throw new Error('Checkout returned an unexpected destination. Contact support.');
@@ -563,10 +583,13 @@ async function verifyCheckoutReturn() {
         const snapshot = JSON.parse(sessionStorage.getItem(CHECKOUT_SNAPSHOT_KEY) || 'null');
         if (snapshot?.orderId === payload.data.orderId && Array.isArray(snapshot.items)) {
           receiptBlocked = false;
+          const alreadyCompleted = localStorage.getItem('cambinos.store.completed-receipt.v1:' + payload.data.orderId) === 'paid';
           const selectionKey = item => JSON.stringify([item.listingId, item.quoteVersion || null, item.cardIndex ?? null]);
           const purchased = new Map(snapshot.items.map(item => [selectionKey(item), item.quantity]));
-          cart = readCart().map(item => ({ ...item, quantity: Math.max(0, item.quantity - (purchased.get(selectionKey(item)) || 0)) })).filter(item => item.quantity > 0);
-          localStorage.setItem(CART_KEY, JSON.stringify(cart));
+          if (!alreadyCompleted) {
+            cart = readCart().map(item => ({ ...item, quantity: Math.max(0, item.quantity - (purchased.get(selectionKey(item)) || 0)) })).filter(item => item.quantity > 0);
+            localStorage.setItem(CART_KEY, JSON.stringify(cart));
+          }
           sessionStorage.removeItem(CHECKOUT_SNAPSHOT_KEY);
         }
         if (!receiptBlocked) sessionStorage.removeItem(RECEIPT_SESSION_KEY);
